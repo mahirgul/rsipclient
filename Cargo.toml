@@ -10,7 +10,7 @@ documentation = "https://github.com/USER/rsipclient#readme"
 readme = "README.md"
 keywords = ["sip", "voip", "rtp", "ivr", "auto-attendant"]
 categories = ["network-programming", "command-line-utilities"]
-authors = ["Mahir Gul <mahirgul@users.noreply.github.com>"]
+authors = ["Mahir Gül <mahirgul@gmail.com>"]
 
 [features]
 default = []
