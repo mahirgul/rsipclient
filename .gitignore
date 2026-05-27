@@ -1,11 +1,34 @@
+# Rust
 /target
-**/*.rs.bk
-*.pdb
-*.log
-.env
+
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+.project
+.classpath
+.settings/
+
+# OS
 .DS_Store
+Thumbs.db
+Desktop.ini
+
+# Build artifacts
+*.pdb
+*.dSYM/
+**/*.rs.bk
+*.log
+
+# Environment
+.env
+.env.local
+
+# Editor config backups
+*.orig
+*.tmp
+
+# Agent workspace
+.deep/

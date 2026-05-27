@@ -10,5 +10,8 @@
   "gelen aramalara ses dinletecek bir seçenek yapalım. gelen aramada ses dinlerken gelen dtmf tuşlamasına göre başka bir numaraya transfer edebilsin. ses kayıt transfer bekletme gibi özellikler ekleyelim.",
   "kodla ilgili değil. yaptıgın işlemlerde bazı toollar aradın bulamadın onların isimleri neydi?",
   "githubta yayınlanacak şekilde ayarları yap. docs readme contributing dosyalarını oluştur. release ve ci yaml hazırla",
-  "clippy format fmt hata denetle"
+  "clippy format fmt hata denetle",
+  "githubta proje için güzel bir description ekle",
+  "gitignore güncelle",
+  "gönder yeni versiyon numarası ile release.yaml varmı"
 ]

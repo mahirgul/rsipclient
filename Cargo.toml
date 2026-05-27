@@ -2,7 +2,7 @@
 name = "sip-client"
 version = "0.1.0"
 edition = "2021"
-description = "Multi-account SIP client with IVR/auto-attendant and TCP control interface"
+description = "Multi-account SIP client with IVR/auto-attendant, DTMF detection, call transfer, recording, and JSON TCP control — all in a single Rust binary"
 license = "MIT"
 repository = "https://github.com/USER/rsipclient"
 homepage = "https://github.com/USER/rsipclient"
@@ -10,7 +10,7 @@ documentation = "https://github.com/USER/rsipclient#readme"
 readme = "README.md"
 keywords = ["sip", "voip", "rtp", "ivr", "auto-attendant"]
 categories = ["network-programming", "command-line-utilities"]
-authors = ["Mahir <you@example.com>"]
+authors = ["Mahir Gul <mahirgul@users.noreply.github.com>"]
 
 [features]
 default = []

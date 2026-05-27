@@ -1,18 +1,34 @@
-# rsipclient — Rust SIP Client with IVR
+# rsipclient — Rust SIP Client & IVR Engine
 
 [![CI](https://github.com/USER/rsipclient/actions/workflows/ci.yml/badge.svg)](https://github.com/USER/rsipclient/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-stable%201.70%2B-orange.svg)](https://rust-lang.org)
 
-A lightweight, multi-account **SIP client** and **IVR / auto-attendant** written in Rust.
-Designed for automating VoIP calls: register, dial, play audio, detect DTMF, transfer,
-record, hold — all controllable via a simple JSON TCP interface.
+**A multi-account SIP client with a built-in auto-attendant, written in pure async Rust.**
+
+Place calls, play audio, detect DTMF, transfer callers, record voicemail — everything
+over a lightweight JSON TCP interface. No heavy frameworks, no JVM, just a single
+binary that speaks SIP + RTP.
+
+Ideal for:
+- ☎️ **Automated call routing** — IVR menus with DTMF-driven transfers
+- 🤖 **Voice bots** — script call flows via TCP commands
+- 🧪 **SIP testing** — generate and inspect SIP signalling from CLI
+- 📞 **Softphone backend** — embed SIP capabilities into your own app
 
 ## Features
 
 - **Multi-account** — manage multiple SIP registrations simultaneously
 - **SIP signalling** — REGISTER, INVITE, BYE, CANCEL, ACK, REFER
 - **MD5 digest** authentication (RFC 2617)
-- **RTP streaming** with G.711 μ-law, A-law, and Opus codecs
+- **RTP streaming** — G.711 μ-law, A-law, Opus codecs
+- **IVR / Auto-attendant** — answer, play menus, collect DTMF, transfer, hold, record
+- **RFC 2833 DTMF** — in-band telephone-event detection
+- **RFC 3325** — P-Asserted-Identity, P-Preferred-Identity headers
+- **RFC 4028** — Session-Expires / session timers
+- **JSON TCP IPC** — control the service from any language
+- **Zero-copy RTP** — efficient G.711 en/decoding
+- **Single binary** — ~2 MB release build (no Opus), ~3 MB with Opus
 - **IVR / Auto-attendant** — answer incoming calls, play menus, collect DTMF
 - **Call transfer** via REFER (blind transfer)
 - **Call hold / resume** via re-INVITE
