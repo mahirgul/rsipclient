@@ -1,6 +1,6 @@
 # rsipclient — Rust SIP Client & IVR Engine
 
-[![CI](https://github.com/USER/rsipclient/actions/workflows/ci.yml/badge.svg)](https://github.com/USER/rsipclient/actions/workflows/ci.yml)
+[![CI](https://github.com/mahirgul/rsipclient/actions/workflows/ci.yml/badge.svg)](https://github.com/USER/rsipclient/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-stable%201.70%2B-orange.svg)](https://rust-lang.org)
 
