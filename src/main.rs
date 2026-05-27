@@ -28,14 +28,14 @@ use ipc::Request;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    pretty_env_logger::init();
+    service::logger::init_logger();
     let cli = Cli::parse();
 
     // --- Service mode ---
     if let Some(Command::Service { ctrl_port }) = cli.command {
         println!("Loading config: {}", cli.config);
         let cfg = Config::load(&cli.config).context("Failed to load config file")?;
-        let svc = service::Service::new(&cfg, ctrl_port)
+        let svc = service::Service::new(&cfg, ctrl_port, cli.config.clone())
             .await
             .context("Failed to create service")?;
         svc.run().await?;

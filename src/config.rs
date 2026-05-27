@@ -1,17 +1,46 @@
-//! Configuration module - multi-account SIP client config
-
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::fs;
 
+/// Configuration for the web dashboard service
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct WebConfig {
+    /// Port to listen on (default: 9090)
+    #[serde(default = "default_web_port")]
+    pub port: u16,
+
+    /// Username for dashboard login (default: "admin")
+    #[serde(default = "default_web_username")]
+    pub username: String,
+
+    /// Password for dashboard login (default: "admin")
+    #[serde(default = "default_web_password")]
+    pub password: String,
+}
+
+fn default_web_port() -> u16 {
+    9090
+}
+
+fn default_web_username() -> String {
+    "admin".to_string()
+}
+
+fn default_web_password() -> String {
+    "admin".to_string()
+}
+
 /// Root config structure loaded from TOML file
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Config {
+    /// Optional web server settings
+    pub web: Option<WebConfig>,
+
     /// List of SIP accounts
     pub accounts: Vec<Account>,
 }
 
 /// A single SIP account configuration
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Account {
     // ── Required fields ─────────────────────────────────
     /// Display name for this account (used in CLI selection)
@@ -166,6 +195,13 @@ impl Config {
         let config: Config = toml::from_str(&content)?;
         config.validate()?;
         Ok(config)
+    }
+
+    /// Save configuration to a TOML file
+    pub fn save(&self, path: &str) -> anyhow::Result<()> {
+        let content = toml::to_string_pretty(self)?;
+        fs::write(path, content)?;
+        Ok(())
     }
 
     /// Validate configuration

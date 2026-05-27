@@ -34,6 +34,7 @@ pub struct SipClient {
     pub(crate) call_id: Option<String>,
     pub remote_tag: Option<String>,
     pub in_call: bool,
+    pub registered: Arc<Mutex<bool>>,
 }
 
 impl SipClient {
@@ -67,6 +68,7 @@ impl SipClient {
             call_id: None,
             remote_tag: None,
             in_call: false,
+            registered: Arc::new(Mutex::new(false)),
         })
     }
 
