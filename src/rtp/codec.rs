@@ -171,8 +171,8 @@ pub fn alaw_to_linear(alaw: u8) -> i16 {
 pub fn opus_encode(chunk: &[i16]) -> Result<Vec<u8>> {
     #[cfg(feature = "opus")]
     {
-        use opus::{Application, Encoder};
-        let mut encoder = Encoder::new(48000, Application::Audio)?;
+        use opus::{Application, Channels, Encoder};
+        let mut encoder = Encoder::new(48000, Channels::Mono, Application::Audio)?;
         let mut output = vec![0u8; 4000];
         let n = encoder.encode(chunk, &mut output)?;
         output.truncate(n);
