@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    name: Build & Publish ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: sip-client
+            asset: sip-client-linux-x86_64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: sip-client.exe
+            asset: sip-client-windows-x86_64.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release (no opus)
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Build release (with opus)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update && sudo apt-get install -y libopus-dev
+          cargo build --release --features opus --target ${{ matrix.target }}
+
+      - name: Rename artifact
+        shell: bash
+        run: |
+          cp target/${{ matrix.target }}/release/${{ matrix.artifact }} ${{ matrix.asset }}
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.asset }}
+          generate_release_notes: true
+
+  crate-publish:
+    name: Publish to crates.io
+    runs-on: ubuntu-latest
+    needs: [release]
+    if: github.ref_type == 'tag' && (!contains(github.ref_name, '-'))
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Publish
+        run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}

@@ -1,0 +1,109 @@
+//! SIP call control — REFER (transfer), re-INVITE (hold/resume)
+
+use crate::sip::settings::SipSettings;
+
+/// Build a REFER request to transfer the call to a target
+pub fn build_refer(
+    username: &str,
+    domain: &str,
+    refer_to: &str,
+    local_addr: &str,
+    local_tag: &str,
+    remote_tag: &str,
+    call_id: &str,
+    cseq: u32,
+    branch: &str,
+    settings: &SipSettings,
+) -> String {
+    let from = settings.format_from(username, domain);
+
+    format!(
+        "REFER sip:{}@{} SIP/2.0\r\n\
+         Via: SIP/2.0/UDP {};branch={}\r\n\
+         Max-Forwards: 70\r\n\
+         From: {};tag={}\r\n\
+         To: <sip:{}@{}>;tag={}\r\n\
+         Call-ID: {}\r\n\
+         CSeq: {} REFER\r\n\
+         Contact: <sip:{}@{}>\r\n\
+         Refer-To: <{}>\r\n\
+         Content-Length: 0\r\n\
+         \r\n",
+        username,
+        domain,
+        local_addr,
+        branch,
+        from,
+        local_tag,
+        username,
+        domain,
+        remote_tag,
+        call_id,
+        cseq,
+        username,
+        local_addr,
+        refer_to,
+    )
+}
+
+/// Build a re-INVITE to put a call on hold (sendonly/inactive)
+pub fn build_hold(
+    username: &str,
+    domain: &str,
+    local_ip: &str,
+    local_addr: &str,
+    local_tag: &str,
+    remote_tag: &str,
+    call_id: &str,
+    cseq: u32,
+    branch: &str,
+    rtp_port: u16,
+    settings: &SipSettings,
+    resume: bool,
+) -> String {
+    let from = settings.format_from(username, domain);
+    let direction = if resume { "sendrecv" } else { "sendonly" };
+
+    // Minimal SDP
+    let sdp = format!(
+        "v=0\r\n\
+         o={} 0 0 IN IP4 {}\r\n\
+         s=hold\r\n\
+         c=IN IP4 {}\r\n\
+         t=0 0\r\n\
+         m=audio {} RTP/AVP 0 8 101\r\n\
+         a={}\r\n",
+        username, local_ip, local_ip, rtp_port, direction
+    );
+    let sdp_len = sdp.len();
+
+    format!(
+        "INVITE sip:{}@{} SIP/2.0\r\n\
+         Via: SIP/2.0/UDP {};branch={}\r\n\
+         Max-Forwards: 70\r\n\
+         From: {};tag={}\r\n\
+         To: <sip:{}@{}>;tag={}\r\n\
+         Call-ID: {}\r\n\
+         CSeq: {} INVITE\r\n\
+         Contact: <sip:{}@{}>\r\n\
+         Content-Type: application/sdp\r\n\
+         Content-Length: {}\r\n\
+         \r\n\
+         {}",
+        username,
+        domain,
+        local_addr,
+        branch,
+        from,
+        local_tag,
+        username,
+        domain,
+        remote_tag,
+        call_id,
+        cseq,
+        username,
+        local_addr,
+        sdp_len,
+        sdp,
+    )
+}

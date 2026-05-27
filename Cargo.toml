@@ -1,0 +1,36 @@
+[package]
+name = "sip-client"
+version = "0.1.0"
+edition = "2021"
+description = "Multi-account SIP client with IVR/auto-attendant and TCP control interface"
+license = "MIT"
+repository = "https://github.com/USER/rsipclient"
+homepage = "https://github.com/USER/rsipclient"
+documentation = "https://github.com/USER/rsipclient#readme"
+readme = "README.md"
+keywords = ["sip", "voip", "rtp", "ivr", "auto-attendant"]
+categories = ["network-programming", "command-line-utilities"]
+authors = ["Mahir <you@example.com>"]
+
+[features]
+default = []
+opus = ["dep:opus"]
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+uuid = { version = "1", features = ["v4"] }
+anyhow = "1"
+md5 = "0.7"
+pretty_env_logger = "0.5"
+log = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+opus = { version = "0.3", optional = true }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

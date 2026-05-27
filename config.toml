@@ -1,0 +1,72 @@
+# ── SIP Client Configuration ──────────────────────────────────
+#
+# Zorunlu: name, username, password, server
+# Diğer tüm alanlar opsiyoneldir.
+
+[[accounts]]
+name = "alice"
+username = "alice"
+password = "secret123"
+domain = "sip.example.com"
+server = "192.168.1.1:5060"
+sip_port = 5060
+rtp_port_start = 8000
+rtp_port_end = 8010
+auth_method = "md5"
+codec = "pcmu"
+
+# ── Identity ─────────────────────────────────────────────────
+display_name = "Alice Smith"
+asserted_id = "sip:+44123456789@example.com"
+
+# ── IVR / Auto-Attendant ─────────────────────────────────────
+auto_answer = true
+ivr_welcome = "welcome.wav"           # 8kHz 16-bit mono PCM WAV
+ivr_timeout = 10                       # DTMF bekleme süresi (saniye)
+
+# DTMF menüsü: tuş = aksiyon
+# Format: transfer:URI | playback:dosya.wav | record:dosya.wav:saniye | hold | hangup
+[accounts.ivr_menu]
+"1" = "transfer:sip:1001@sip.example.com"
+"2" = "transfer:sip:1002@sip.example.com"
+"3" = "playback:info.wav"
+"4" = "record:voicemail.wav:30"
+"5" = "hold"
+"*" = "hangup"
+
+ivr_default = "transfer:sip:operator@sip.example.com"
+
+# ── Protocol ─────────────────────────────────────────────────
+register_expiry = 3600
+user_agent = "RustSIP/1.0"
+dtmf_mode = "rfc2833"
+early_media = true
+session_timers = false
+
+# ─────────────────────────────────────────────────────────────
+[[accounts]]
+name = "bob"
+username = "bob"
+password = "secret456"
+domain = "sip.example.com"
+server = "192.168.1.1:5060"
+sip_port = 5070
+rtp_port_start = 8012
+rtp_port_end = 8022
+auth_method = "md5"
+codec = "pcma"
+display_name = "Bob Jones"
+
+[[accounts]]
+name = "charlie"
+username = "charlie"
+password = "secret789"
+domain = "pbx.other.com"
+server = "10.0.0.50:5060"
+sip_port = 0
+rtp_port_start = 9000
+rtp_port_end = 9010
+auth_method = "none"
+codec = "opus"
+display_name = "Charlie"
+asserted_id = "sip:charlie-trusted@pbx.other.com"
