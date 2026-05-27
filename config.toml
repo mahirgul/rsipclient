@@ -26,14 +26,7 @@ ivr_timeout = 10                       # DTMF bekleme süresi (saniye)
 
 # DTMF menüsü: tuş = aksiyon
 # Format: transfer:URI | playback:dosya.wav | record:dosya.wav:saniye | hold | hangup
-[accounts.ivr_menu]
-"1" = "transfer:sip:1001@sip.example.com"
-"2" = "transfer:sip:1002@sip.example.com"
-"3" = "playback:info.wav"
-"4" = "record:voicemail.wav:30"
-"5" = "hold"
-"*" = "hangup"
-
+ivr_menu = { "1" = "transfer:sip:1001@sip.example.com", "2" = "transfer:sip:1002@sip.example.com", "3" = "playback:info.wav", "4" = "record:voicemail.wav:30", "5" = "hold", "*" = "hangup" }
 ivr_default = "transfer:sip:operator@sip.example.com"
 
 # ── Protocol ─────────────────────────────────────────────────
