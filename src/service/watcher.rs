@@ -1,10 +1,10 @@
 //! Call watcher module - handles incoming call detection, auto-answering, and IVR execution.
 
 use crate::config::Account;
+use crate::ivr;
 use crate::rtp::codec::Codec;
 use crate::rtp::receiver::RtpReceiver;
 use crate::sip::{sdp, utils, SipClient};
-use crate::ivr;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -211,11 +211,13 @@ pub async fn registration_watcher(
                 Some(last_time) => {
                     if is_currently_registered {
                         // Refresh registration at half of expiry time
-                        let refresh_duration = std::time::Duration::from_secs((register_expiry / 2).max(10) as u64);
+                        let refresh_duration =
+                            std::time::Duration::from_secs((register_expiry / 2).max(10) as u64);
                         now.duration_since(last_time) >= refresh_duration
                     } else {
                         // Retry registration after retry_interval
-                        let retry_duration = std::time::Duration::from_secs(retry_interval.max(5) as u64);
+                        let retry_duration =
+                            std::time::Duration::from_secs(retry_interval.max(5) as u64);
                         now.duration_since(last_time) >= retry_duration
                     }
                 }

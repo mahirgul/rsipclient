@@ -70,7 +70,10 @@ async fn handle_unregister(req: &Request, clients: &HashMap<String, ManagedClien
     *mc.should_register.lock().await = false;
     let client = mc.client.lock().await;
     match client.unregister().await {
-        Ok(true) => Response::ok(&format!("'{}' unregistered", req.account.as_deref().unwrap())),
+        Ok(true) => Response::ok(&format!(
+            "'{}' unregistered",
+            req.account.as_deref().unwrap()
+        )),
         Ok(false) => Response::fail(&format!(
             "'{}' unregistration failed",
             req.account.as_deref().unwrap()

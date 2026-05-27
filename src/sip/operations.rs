@@ -82,7 +82,7 @@ impl SipClient {
         let branch = self.new_branch();
         let call_id = self.new_call_id();
         let cseq = self.next_cseq().await;
-        
+
         let mut settings = self.settings.clone();
         settings.register_expiry = 0; // set expiry to 0 to unregister
 

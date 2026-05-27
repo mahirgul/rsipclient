@@ -7,14 +7,14 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use base64::Engine;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use base64::Engine;
 
-use crate::ipc::{Request, Response};
 use super::ManagedClient;
+use crate::ipc::{Request, Response};
 
 #[derive(Clone)]
 pub struct CommandsServerState {
@@ -51,8 +51,14 @@ fn verify_auth(headers: &HeaderMap, state: &CommandsServerState) -> Result<(), S
     let username = parts[0];
     let password = parts[1];
 
-    let expected_username = state.username.as_deref().unwrap_or(&state.fallback_web_username);
-    let expected_password = state.password.as_deref().unwrap_or(&state.fallback_web_password);
+    let expected_username = state
+        .username
+        .as_deref()
+        .unwrap_or(&state.fallback_web_username);
+    let expected_password = state
+        .password
+        .as_deref()
+        .unwrap_or(&state.fallback_web_password);
 
     if username == expected_username && password == expected_password {
         Ok(())
@@ -222,7 +228,10 @@ pub async fn start_commands_server(state: CommandsServerState, port: u16) {
         .route("/api/cmd/hangup", post(handle_post_hangup))
         .route("/api/cmd/cancel", post(handle_post_cancel))
         .route("/api/cmd/play", post(handle_post_play))
-        .route("/api/cmd/status", get(handle_get_status).post(handle_get_status))
+        .route(
+            "/api/cmd/status",
+            get(handle_get_status).post(handle_get_status),
+        )
         .route("/api/cmd/shutdown", post(handle_post_shutdown))
         .with_state(state);
 

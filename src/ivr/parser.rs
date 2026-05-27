@@ -1,6 +1,6 @@
-use std::collections::HashMap;
 use crate::config::Account;
 use crate::ivr::types::{IvrAction, IvrConfig, IvrMenu};
+use std::collections::HashMap;
 
 /// Build an IVR menu from config key-value pairs
 pub fn parse_menu(raw: &HashMap<String, String>) -> IvrMenu {

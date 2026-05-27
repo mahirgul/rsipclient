@@ -1,8 +1,8 @@
+pub(crate) mod commands_server;
 mod handlers;
 pub(crate) mod logger;
 pub(crate) mod watcher;
 pub(crate) mod web_server;
-pub(crate) mod commands_server;
 
 pub(crate) use watcher::{incoming_call_watcher, registration_watcher};
 
@@ -57,8 +57,7 @@ pub(crate) async fn create_managed_client(account: &Account) -> Result<ManagedCl
         _ => AuthMethod::Md5,
     };
 
-    let codec =
-        Codec::from_str(account.codec.as_deref().unwrap_or("pcmu")).unwrap_or(Codec::Pcmu);
+    let codec = Codec::from_str(account.codec.as_deref().unwrap_or("pcmu")).unwrap_or(Codec::Pcmu);
 
     let sip_settings = SipSettings::from_config(
         account.display_name.clone(),
@@ -125,11 +124,16 @@ impl Service {
             (9090, "admin".to_string(), "admin".to_string())
         };
 
-        let (commands_port, commands_username, commands_password) = if let Some(ref cmd_api) = config.commands_api {
-            (cmd_api.port, cmd_api.username.clone(), cmd_api.password.clone())
-        } else {
-            (9099, None, None)
-        };
+        let (commands_port, commands_username, commands_password) =
+            if let Some(ref cmd_api) = config.commands_api {
+                (
+                    cmd_api.port,
+                    cmd_api.username.clone(),
+                    cmd_api.password.clone(),
+                )
+            } else {
+                (9099, None, None)
+            };
 
         Ok(Service {
             clients: Arc::new(Mutex::new(clients)),
@@ -159,13 +163,16 @@ impl Service {
             "Service running on {} (control port {})",
             bind_addr, self.control_port
         );
-        
+
         // Spawn watchers for each account
         {
             let cls = clients.lock().await;
             println!(
                 "Accounts: {}",
-                cls.keys().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")
+                cls.keys()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
             );
             for (name, mc) in cls.iter() {
                 if mc.account.auto_answer.unwrap_or(false) {
@@ -178,7 +185,15 @@ impl Service {
                     log::info!("Auto-answer enabled for '{}'", account_name);
 
                     tokio::spawn(async move {
-                        incoming_call_watcher(account_name, client, codec, account, shutdown, active).await;
+                        incoming_call_watcher(
+                            account_name,
+                            client,
+                            codec,
+                            account,
+                            shutdown,
+                            active,
+                        )
+                        .await;
                     });
                 }
 
@@ -235,7 +250,10 @@ impl Service {
             commands_server::start_commands_server(cmd_state, cmd_port).await;
         });
 
-        println!("Send 'shutdown' command to stop, or access Web Dashboard at http://localhost:{}", self.web_port);
+        println!(
+            "Send 'shutdown' command to stop, or access Web Dashboard at http://localhost:{}",
+            self.web_port
+        );
 
         loop {
             if *shutdown.lock().await {
@@ -316,5 +334,3 @@ impl Service {
         }
     }
 }
-
-

@@ -18,10 +18,16 @@ impl Log for MemoryLogger {
 
     fn log(&self, record: &Record) {
         if self.enabled(record.metadata()) {
-            let time_str = match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+            let time_str = match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+            {
                 Ok(dur) => {
                     let secs = dur.as_secs();
-                    format!("{:02}:{:02}:{:02}", (secs / 3600) % 24, (secs / 60) % 60, secs % 60)
+                    format!(
+                        "{:02}:{:02}:{:02}",
+                        (secs / 3600) % 24,
+                        (secs / 60) % 60,
+                        secs % 60
+                    )
                 }
                 Err(_) => "00:00:00".to_string(),
             };
@@ -34,8 +40,14 @@ impl Log for MemoryLogger {
                 log::Level::Trace => "TRACE",
             };
 
-            let log_line = format!("[{}] {} [{}] {}", time_str, level_str, record.target(), record.args());
-            
+            let log_line = format!(
+                "[{}] {} [{}] {}",
+                time_str,
+                level_str,
+                record.target(),
+                record.args()
+            );
+
             // Print to standard error so it is visible in the terminal
             eprintln!("{}", log_line);
 

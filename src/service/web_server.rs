@@ -1,18 +1,18 @@
 //! Web Server module - provides the REST API and serves the embedded Dashboard UI
 
+use super::{create_managed_client, ManagedClient};
+use crate::config::{Account, Config};
 use axum::{
     extract::{Path, State},
     http::{header, HeaderMap, StatusCode},
     response::{Html, IntoResponse, Json},
-    routing::{get, post, put, delete},
+    routing::{delete, get, post, put},
     Router,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::Mutex;
-use crate::config::{Account, Config};
-use super::{ManagedClient, create_managed_client};
 use sysinfo::System;
+use tokio::sync::Mutex;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -61,13 +61,13 @@ fn verify_token(headers: &HeaderMap, state: &AppState) -> Result<(), StatusCode>
         .get(header::AUTHORIZATION)
         .and_then(|h| h.to_str().ok())
         .and_then(|h| h.strip_prefix("Bearer "));
-    
+
     if let Some(tok) = token {
         if tok == state.session_token {
             return Ok(());
         }
     }
-    
+
     Err(StatusCode::UNAUTHORIZED)
 }
 
@@ -99,25 +99,25 @@ async fn get_status(
     verify_token(&headers, &state)?;
 
     let cls = state.clients.lock().await;
-    
+
     let mut total_accounts = 0;
     let mut registered_accounts = 0;
     let mut active_calls = 0;
     let mut accounts = vec![];
-    
+
     for (name, mc) in cls.iter() {
         total_accounts += 1;
         let client_lock = mc.client.lock().await;
         let is_registered = *client_lock.registered.lock().await;
         let is_in_call = client_lock.in_call;
-        
+
         if is_registered {
             registered_accounts += 1;
         }
         if is_in_call {
             active_calls += 1;
         }
-        
+
         accounts.push(AccountStatus {
             name: name.clone(),
             username: client_lock.username.clone(),
@@ -133,11 +133,11 @@ async fn get_status(
     // Process system and resource info
     let mut sys = System::new_all();
     sys.refresh_all();
-    
+
     let pid = sysinfo::get_current_pid().ok();
     let mut memory_bytes = 0;
     let mut cpu_percent = 0.0;
-    
+
     if let Some(pid) = pid {
         if let Some(proc) = sys.process(pid) {
             // proc.memory() returns memory in bytes in modern sysinfo (version 0.30+)
@@ -145,7 +145,7 @@ async fn get_status(
             cpu_percent = proc.cpu_usage();
         }
     }
-    
+
     let uptime_secs = state.start_time.elapsed().as_secs();
     let os_name = format!(
         "{} {}",
@@ -171,7 +171,7 @@ async fn get_accounts(
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, StatusCode> {
     verify_token(&headers, &state)?;
-    
+
     let cfg = Config::load(&state.config_path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(cfg.accounts))
 }
@@ -190,16 +190,18 @@ async fn add_account(
     }
 
     // Load config, append account, save config
-    let mut cfg = Config::load(&state.config_path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let mut cfg =
+        Config::load(&state.config_path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     cfg.accounts.push(new_acc.clone());
-    cfg.save(&state.config_path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    cfg.save(&state.config_path)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Create managed client and insert
     let mc = create_managed_client(&new_acc).await.map_err(|e| {
         log::error!("Failed to create dynamic client: {}", e);
         StatusCode::BAD_REQUEST
     })?;
-    
+
     // Spawn call watcher if auto-answer
     if mc.account.auto_answer.unwrap_or(false) {
         let client = mc.client.clone();
@@ -209,7 +211,8 @@ async fn add_account(
         let active = mc.active.clone();
         let account_name = new_acc.name.clone();
         tokio::spawn(async move {
-            super::incoming_call_watcher(account_name, client, codec, account, shutdown, active).await;
+            super::incoming_call_watcher(account_name, client, codec, account, shutdown, active)
+                .await;
         });
     }
 
@@ -233,13 +236,15 @@ async fn edit_account(
     *old_mc.active.lock().await = false;
 
     // Load config, update, save config
-    let mut cfg = Config::load(&state.config_path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let mut cfg =
+        Config::load(&state.config_path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     if let Some(idx) = cfg.accounts.iter().position(|a| a.name == name) {
         cfg.accounts[idx] = updated_acc.clone();
     } else {
         return Err(StatusCode::NOT_FOUND);
     }
-    cfg.save(&state.config_path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    cfg.save(&state.config_path)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Create new managed client
     let mc = create_managed_client(&updated_acc).await.map_err(|e| {
@@ -256,7 +261,8 @@ async fn edit_account(
         let active = mc.active.clone();
         let account_name = updated_acc.name.clone();
         tokio::spawn(async move {
-            super::incoming_call_watcher(account_name, client, codec, account, shutdown, active).await;
+            super::incoming_call_watcher(account_name, client, codec, account, shutdown, active)
+                .await;
         });
     }
 
@@ -282,9 +288,11 @@ async fn delete_account(
     *old_mc.active.lock().await = false;
 
     // Load config, remove, save config
-    let mut cfg = Config::load(&state.config_path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let mut cfg =
+        Config::load(&state.config_path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     cfg.accounts.retain(|a| a.name != name);
-    cfg.save(&state.config_path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    cfg.save(&state.config_path)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(serde_json::json!({ "success": true })))
 }
@@ -301,11 +309,17 @@ async fn register_account(
     let mc = cls.get(&name).ok_or(StatusCode::NOT_FOUND)?;
     *mc.should_register.lock().await = true;
     let client = mc.client.lock().await;
-    
+
     match client.register().await {
-        Ok(true) => Ok(Json(serde_json::json!({ "success": true, "msg": "Registered successfully" }))),
-        Ok(false) => Ok(Json(serde_json::json!({ "success": false, "msg": "Registration failed" }))),
-        Err(e) => Ok(Json(serde_json::json!({ "success": false, "msg": format!("Error: {}", e) }))),
+        Ok(true) => Ok(Json(
+            serde_json::json!({ "success": true, "msg": "Registered successfully" }),
+        )),
+        Ok(false) => Ok(Json(
+            serde_json::json!({ "success": false, "msg": "Registration failed" }),
+        )),
+        Err(e) => Ok(Json(
+            serde_json::json!({ "success": false, "msg": format!("Error: {}", e) }),
+        )),
     }
 }
 
@@ -321,11 +335,17 @@ async fn unregister_account(
     let mc = cls.get(&name).ok_or(StatusCode::NOT_FOUND)?;
     *mc.should_register.lock().await = false;
     let client = mc.client.lock().await;
-    
+
     match client.unregister().await {
-        Ok(true) => Ok(Json(serde_json::json!({ "success": true, "msg": "Unregistered successfully" }))),
-        Ok(false) => Ok(Json(serde_json::json!({ "success": false, "msg": "Unregistration failed" }))),
-        Err(e) => Ok(Json(serde_json::json!({ "success": false, "msg": format!("Error: {}", e) }))),
+        Ok(true) => Ok(Json(
+            serde_json::json!({ "success": true, "msg": "Unregistered successfully" }),
+        )),
+        Ok(false) => Ok(Json(
+            serde_json::json!({ "success": false, "msg": "Unregistration failed" }),
+        )),
+        Err(e) => Ok(Json(
+            serde_json::json!({ "success": false, "msg": format!("Error: {}", e) }),
+        )),
     }
 }
 
@@ -335,7 +355,7 @@ async fn get_logs(
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, StatusCode> {
     verify_token(&headers, &state)?;
-    
+
     let logs = super::logger::get_recent_logs();
     Ok(Json(logs))
 }
@@ -360,7 +380,11 @@ async fn put_config(
 
     // Save config to file
     new_config.save(&state.config_path).map_err(|e| {
-        log::error!("Failed to save config to path '{}': {}", state.config_path, e);
+        log::error!(
+            "Failed to save config to path '{}': {}",
+            state.config_path,
+            e
+        );
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
@@ -370,7 +394,9 @@ async fn put_config(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    Ok(Json(serde_json::json!({ "success": true, "msg": "Configuration updated and reloaded successfully" })))
+    Ok(Json(
+        serde_json::json!({ "success": true, "msg": "Configuration updated and reloaded successfully" }),
+    ))
 }
 
 async fn reload_all_clients(
