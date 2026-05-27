@@ -3,10 +3,19 @@
 # Zorunlu: name, username, password, server
 # Diğer tüm alanlar opsiyoneldir.
 
+[web]
+port = 9090
+username = "admin"
+password = "admin"
+
+[commands_api]
+port = 9099
+
 [[accounts]]
 name = "alice"
 username = "alice"
 password = "secret123"
+register_retry_interval = 30
 domain = "sip.example.com"
 server = "192.168.1.1:5060"
 sip_port = 5060

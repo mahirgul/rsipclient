@@ -2,8 +2,9 @@ mod handlers;
 pub(crate) mod logger;
 pub(crate) mod watcher;
 pub(crate) mod web_server;
+pub(crate) mod commands_server;
 
-pub(crate) use watcher::incoming_call_watcher;
+pub(crate) use watcher::{incoming_call_watcher, registration_watcher};
 
 use crate::config::{Account, Config};
 use crate::ipc::{Request, Response};
@@ -23,6 +24,7 @@ pub(crate) struct ManagedClient {
     pub client: Arc<Mutex<SipClient>>,
     pub codec: Codec,
     pub active: Arc<Mutex<bool>>,
+    pub should_register: Arc<Mutex<bool>>,
 }
 
 /// The service that holds all managed clients and handles IPC
@@ -33,6 +35,9 @@ pub struct Service {
     pub(crate) web_port: u16,
     pub(crate) web_username: String,
     pub(crate) web_password: String,
+    pub(crate) commands_port: u16,
+    pub(crate) commands_username: Option<String>,
+    pub(crate) commands_password: Option<String>,
     pub(crate) global_shutdown: Arc<Mutex<bool>>,
 }
 
@@ -80,11 +85,14 @@ pub(crate) async fn create_managed_client(account: &Account) -> Result<ManagedCl
     )
     .await?;
 
+    let default_register = account.register_expiry.is_some();
+
     Ok(ManagedClient {
         account: account.clone(),
         client: Arc::new(Mutex::new(client)),
         codec,
         active: Arc::new(Mutex::new(true)),
+        should_register: Arc::new(Mutex::new(default_register)),
     })
 }
 
@@ -117,6 +125,12 @@ impl Service {
             (9090, "admin".to_string(), "admin".to_string())
         };
 
+        let (commands_port, commands_username, commands_password) = if let Some(ref cmd_api) = config.commands_api {
+            (cmd_api.port, cmd_api.username.clone(), cmd_api.password.clone())
+        } else {
+            (9099, None, None)
+        };
+
         Ok(Service {
             clients: Arc::new(Mutex::new(clients)),
             control_port,
@@ -124,6 +138,9 @@ impl Service {
             web_port,
             web_username,
             web_password,
+            commands_port,
+            commands_username,
+            commands_password,
             global_shutdown: Arc::new(Mutex::new(false)),
         })
     }
@@ -143,7 +160,7 @@ impl Service {
             bind_addr, self.control_port
         );
         
-        // Spawn incoming-call watchers for auto-answer accounts
+        // Spawn watchers for each account
         {
             let cls = clients.lock().await;
             println!(
@@ -164,6 +181,28 @@ impl Service {
                         incoming_call_watcher(account_name, client, codec, account, shutdown, active).await;
                     });
                 }
+
+                // Spawn registration watcher
+                let client = mc.client.clone();
+                let active = mc.active.clone();
+                let should_register = mc.should_register.clone();
+                let register_expiry = mc.account.register_expiry.unwrap_or(3600);
+                let retry_interval = mc.account.register_retry_interval.unwrap_or(30);
+                let shutdown = shutdown.clone();
+                let account_name = name.clone();
+
+                tokio::spawn(async move {
+                    registration_watcher(
+                        account_name,
+                        client,
+                        active,
+                        should_register,
+                        register_expiry,
+                        retry_interval,
+                        shutdown,
+                    )
+                    .await;
+                });
             }
         }
 
@@ -180,6 +219,20 @@ impl Service {
         let web_port = self.web_port;
         tokio::spawn(async move {
             web_server::start_web_server(web_state, web_port).await;
+        });
+
+        // Spawn REST Commands server
+        let cmd_state = commands_server::CommandsServerState {
+            clients: self.clients.clone(),
+            global_shutdown: shutdown.clone(),
+            username: self.commands_username.clone(),
+            password: self.commands_password.clone(),
+            fallback_web_username: self.web_username.clone(),
+            fallback_web_password: self.web_password.clone(),
+        };
+        let cmd_port = self.commands_port;
+        tokio::spawn(async move {
+            commands_server::start_commands_server(cmd_state, cmd_port).await;
         });
 
         println!("Send 'shutdown' command to stop, or access Web Dashboard at http://localhost:{}", self.web_port);

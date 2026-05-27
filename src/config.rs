@@ -17,6 +17,24 @@ pub struct WebConfig {
     pub password: String,
 }
 
+/// Configuration for the REST commands service
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct CommandsApiConfig {
+    /// Port to listen on (default: 9099)
+    #[serde(default = "default_commands_port")]
+    pub port: u16,
+
+    /// Optional username for REST commands API (uses web username if not specified)
+    pub username: Option<String>,
+
+    /// Optional password for REST commands API (uses web password if not specified)
+    pub password: Option<String>,
+}
+
+fn default_commands_port() -> u16 {
+    9099
+}
+
 fn default_web_port() -> u16 {
     9090
 }
@@ -34,6 +52,9 @@ fn default_web_password() -> String {
 pub struct Config {
     /// Optional web server settings
     pub web: Option<WebConfig>,
+
+    /// Optional REST commands API settings
+    pub commands_api: Option<CommandsApiConfig>,
 
     /// List of SIP accounts
     pub accounts: Vec<Account>,
@@ -98,6 +119,10 @@ pub struct Account {
     /// Registration expiry in seconds (default: 3600 = 1 hour)
     #[serde(default = "default_register_expiry")]
     pub register_expiry: Option<u32>,
+
+    /// Registration retry interval in seconds when registration fails (default: 30)
+    #[serde(default = "default_register_retry_interval")]
+    pub register_retry_interval: Option<u32>,
 
     // ── Protocol ────────────────────────────────────────
     /// Custom User-Agent header value
@@ -168,6 +193,10 @@ fn default_codec() -> Option<String> {
 
 fn default_register_expiry() -> Option<u32> {
     Some(3600)
+}
+
+fn default_register_retry_interval() -> Option<u32> {
+    Some(30)
 }
 
 fn default_early_media() -> Option<bool> {

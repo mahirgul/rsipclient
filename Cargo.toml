@@ -1,6 +1,6 @@
 [package]
 name = "sip-client"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2021"
 description = "Multi-account SIP client with IVR/auto-attendant, DTMF detection, call transfer, recording, and JSON TCP control — all in a single Rust binary"
 license = "MIT"
@@ -30,6 +30,7 @@ toml = "0.8"
 axum = "0.7"
 sysinfo = "0.30"
 opus = { version = "0.3", optional = true }
+base64 = "0.21"
 
 [profile.release]
 opt-level = 3

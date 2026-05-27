@@ -613,6 +613,7 @@
             <nav class="nav-tabs">
                 <button class="tab-btn active" onclick="switchTab('dashboard')">Dashboard</button>
                 <button class="tab-btn" onclick="switchTab('accounts')">Accounts Config</button>
+                <button class="tab-btn" onclick="switchTab('settings')">Global Settings</button>
                 <button class="tab-btn" onclick="switchTab('logs')">Console Logs</button>
             </nav>
             <div class="header-actions">
@@ -743,6 +744,61 @@
                             <!-- Dynamic -->
                         </tbody>
                     </table>
+                </div>
+            </div>
+        </main>
+
+        <!-- ── TAB: GLOBAL SETTINGS ── -->
+        <main id="tab-settings" class="tab-content">
+            <div class="section-card glass">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                    <h2>Global Configuration</h2>
+                    <button class="btn btn-primary" onclick="saveGlobalSettings()" style="width: auto; padding: 0.5rem 1.5rem;">Save & Reload Service</button>
+                </div>
+                
+                <div class="dashboard-detail-grid" style="grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;">
+                    <!-- Web UI Configuration Card -->
+                    <div class="stat-card glass" style="padding: 1.5rem; text-align: left; height: auto;">
+                        <h3 style="margin-top: 0; margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem; color: var(--accent-primary);">Web Dashboard Service</h3>
+                        <div class="form-group" style="margin-bottom: 1rem;">
+                            <label style="display: block; font-size: 0.85rem; margin-bottom: 0.3rem; opacity: 0.8;">HTTP Server Port</label>
+                            <input type="number" id="settings-web-port" class="form-input" style="width: 100%;" placeholder="9090">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 1rem;">
+                            <label style="display: block; font-size: 0.85rem; margin-bottom: 0.3rem; opacity: 0.8;">Admin Username</label>
+                            <input type="text" id="settings-web-user" class="form-input" style="width: 100%;" placeholder="admin">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label style="display: block; font-size: 0.85rem; margin-bottom: 0.3rem; opacity: 0.8;">Admin Password</label>
+                            <input type="password" id="settings-web-pass" class="form-input" style="width: 100%;" placeholder="••••••••">
+                        </div>
+                    </div>
+
+                    <!-- Commands REST API Configuration Card -->
+                    <div class="stat-card glass" style="padding: 1.5rem; text-align: left; height: auto;">
+                        <h3 style="margin-top: 0; margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem; color: var(--accent-secondary);">REST Command API</h3>
+                        <div class="form-group" style="margin-bottom: 1rem;">
+                            <label style="display: block; font-size: 0.85rem; margin-bottom: 0.3rem; opacity: 0.8;">API Listener Port</label>
+                            <input type="number" id="settings-cmd-port" class="form-input" style="width: 100%;" placeholder="9099">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 1rem;">
+                            <label style="display: block; font-size: 0.85rem; margin-bottom: 0.3rem; opacity: 0.8;">API Username (Optional)</label>
+                            <input type="text" id="settings-cmd-user" class="form-input" style="width: 100%;" placeholder="Basic auth user (falls back to web admin)">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label style="display: block; font-size: 0.85rem; margin-bottom: 0.3rem; opacity: 0.8;">API Password (Optional)</label>
+                            <input type="password" id="settings-cmd-pass" class="form-input" style="width: 100%;" placeholder="Basic auth pass (falls back to web admin)">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Raw TOML Editor -->
+                <div style="margin-top: 2rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                        <h3 style="margin: 0; color: var(--text-secondary);">Raw JSON Configuration Editor</h3>
+                        <span style="font-size: 0.8rem; opacity: 0.6;">Edit full TOML structure using JSON representation</span>
+                    </div>
+                    <textarea id="settings-raw-config" class="console-box" style="width: 100%; height: 350px; font-family: monospace; font-size: 0.9rem; padding: 1rem; color: #a9b7c6; background: rgba(10, 12, 18, 0.6); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; resize: vertical; outline: none;"></textarea>
                 </div>
             </div>
         </main>
@@ -934,6 +990,8 @@
 
             if (tabId === 'accounts') {
                 loadAccountsConfig();
+            } else if (tabId === 'settings') {
+                loadGlobalSettings();
             }
         }
 
@@ -1096,6 +1154,103 @@
                 }
             } catch (err) {
                 console.error("Failed to load accounts:", err);
+            }
+        }
+
+        async function loadGlobalSettings() {
+            const token = getSessionToken();
+            if (!token) return;
+
+            try {
+                const res = await fetch(`${API_URL}/api/config`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.status === 401) return logout();
+                if (!res.ok) throw new Error("Load failed");
+
+                const config = await res.json();
+
+                // Fill form fields
+                if (config.web) {
+                    document.getElementById('settings-web-port').value = config.web.port || 9090;
+                    document.getElementById('settings-web-user').value = config.web.username || 'admin';
+                    document.getElementById('settings-web-pass').value = config.web.password || 'admin';
+                } else {
+                    document.getElementById('settings-web-port').value = 9090;
+                    document.getElementById('settings-web-user').value = 'admin';
+                    document.getElementById('settings-web-pass').value = 'admin';
+                }
+
+                if (config.commands_api) {
+                    document.getElementById('settings-cmd-port').value = config.commands_api.port || 9099;
+                    document.getElementById('settings-cmd-user').value = config.commands_api.username || '';
+                    document.getElementById('settings-cmd-pass').value = config.commands_api.password || '';
+                } else {
+                    document.getElementById('settings-cmd-port').value = 9099;
+                    document.getElementById('settings-cmd-user').value = '';
+                    document.getElementById('settings-cmd-pass').value = '';
+                }
+
+                // Fill raw config text area
+                document.getElementById('settings-raw-config').value = JSON.stringify(config, null, 4);
+            } catch (err) {
+                console.error("Failed to load settings:", err);
+            }
+        }
+
+        async function saveGlobalSettings() {
+            const token = getSessionToken();
+            if (!token) return;
+
+            try {
+                let updatedConfig = null;
+                const rawText = document.getElementById('settings-raw-config').value;
+
+                try {
+                    updatedConfig = JSON.parse(rawText);
+                } catch (e) {
+                    alert("Invalid JSON format in the raw editor!");
+                    return;
+                }
+
+                // Also sync basic form values into updatedConfig in case they edited form fields
+                if (!updatedConfig.web) updatedConfig.web = {};
+                updatedConfig.web.port = parseInt(document.getElementById('settings-web-port').value) || 9090;
+                updatedConfig.web.username = document.getElementById('settings-web-user').value || 'admin';
+                updatedConfig.web.password = document.getElementById('settings-web-pass').value || 'admin';
+
+                const cmdPort = parseInt(document.getElementById('settings-cmd-port').value);
+                const cmdUser = document.getElementById('settings-cmd-user').value;
+                const cmdPass = document.getElementById('settings-cmd-pass').value;
+
+                if (cmdPort) {
+                    if (!updatedConfig.commands_api) updatedConfig.commands_api = {};
+                    updatedConfig.commands_api.port = cmdPort;
+                    updatedConfig.commands_api.username = cmdUser ? cmdUser : null;
+                    updatedConfig.commands_api.password = cmdPass ? cmdPass : null;
+                } else {
+                    updatedConfig.commands_api = null;
+                }
+
+                const res = await fetch(`${API_URL}/api/config`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(updatedConfig)
+                });
+
+                if (res.status === 401) return logout();
+                const data = await res.json();
+                if (data.success) {
+                    alert("Settings updated and service clients reloaded successfully!");
+                    loadGlobalSettings();
+                } else {
+                    alert("Failed to update settings: " + (data.msg || "Unknown error"));
+                }
+            } catch (err) {
+                alert("Failed to save settings: " + err);
             }
         }
 

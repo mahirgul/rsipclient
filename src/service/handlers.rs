@@ -14,6 +14,7 @@ pub async fn process_command(req: &Request, clients: &HashMap<String, ManagedCli
     match req.cmd.as_str() {
         "status" => handle_status(clients).await,
         "register" => handle_register(req, clients).await,
+        "unregister" => handle_unregister(req, clients).await,
         "call" => handle_call(req, clients).await,
         "hangup" => handle_hangup(req, clients).await,
         "cancel" => handle_cancel(req, clients).await,
@@ -44,11 +45,34 @@ async fn handle_register(req: &Request, clients: &HashMap<String, ManagedClient>
         Ok(name) => name,
         Err(resp) => return resp,
     };
+    *mc.should_register.lock().await = true;
     let client = mc.client.lock().await;
     match client.register().await {
         Ok(true) => Response::ok(&format!("'{}' registered", req.account.as_deref().unwrap())),
         Ok(false) => Response::fail(&format!(
             "'{}' registration failed",
+            req.account.as_deref().unwrap()
+        )),
+        Err(e) => Response::fail(&format!(
+            "'{}' error: {}",
+            req.account.as_deref().unwrap(),
+            e
+        )),
+    }
+}
+
+async fn handle_unregister(req: &Request, clients: &HashMap<String, ManagedClient>) -> Response {
+    let account_name = get_account(req, "unregister", clients);
+    let mc = match account_name {
+        Ok(name) => name,
+        Err(resp) => return resp,
+    };
+    *mc.should_register.lock().await = false;
+    let client = mc.client.lock().await;
+    match client.unregister().await {
+        Ok(true) => Response::ok(&format!("'{}' unregistered", req.account.as_deref().unwrap())),
+        Ok(false) => Response::fail(&format!(
+            "'{}' unregistration failed",
             req.account.as_deref().unwrap()
         )),
         Err(e) => Response::fail(&format!(
