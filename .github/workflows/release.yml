@@ -22,10 +22,26 @@ jobs:
             target: x86_64-unknown-linux-gnu
             artifact: sip-client
             asset: sip-client-linux-x86_64
+          - os: ubuntu-24.04-arm64
+            target: aarch64-unknown-linux-gnu
+            artifact: sip-client
+            asset: sip-client-linux-arm64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact: sip-client.exe
             asset: sip-client-windows-x86_64.exe
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            artifact: sip-client.exe
+            asset: sip-client-windows-arm64.exe
+          - os: macos-13
+            target: x86_64-apple-darwin
+            artifact: sip-client
+            asset: sip-client-macos-x86_64
+          - os: macos-14
+            target: aarch64-apple-darwin
+            artifact: sip-client
+            asset: sip-client-macos-arm64
 
     steps:
       - uses: actions/checkout@v4
@@ -40,7 +56,7 @@ jobs:
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Build release (with opus)
-        if: matrix.os == 'ubuntu-latest'
+        if: startsWith(matrix.os, 'ubuntu')
         run: |
           sudo apt-get update && sudo apt-get install -y libopus-dev
           cargo build --release --features opus --target ${{ matrix.target }}
