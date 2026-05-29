@@ -17,6 +17,7 @@ pub async fn incoming_call_watcher(
     account: Account,
     shutdown: Arc<Mutex<bool>>,
     active: Arc<Mutex<bool>>,
+    audio_tx: tokio::sync::broadcast::Sender<Vec<i16>>,
 ) {
     loop {
         if *shutdown.lock().await || !*active.lock().await {
@@ -131,7 +132,7 @@ pub async fn incoming_call_watcher(
                 continue;
             }
         };
-        receiver.start();
+        receiver.start(codec, Some(audio_tx.clone()));
 
         // Mark as in-call
         {
@@ -139,6 +140,8 @@ pub async fn incoming_call_watcher(
             c.in_call = true;
             c.call_id = Some(call_id.clone());
             c.remote_tag = Some(from_tag.clone());
+            c.remote_rtp_addr = remote_rtp;
+            c.rtp_receiver = Some(receiver.clone());
         }
 
         // Run IVR if configured
@@ -164,6 +167,8 @@ pub async fn incoming_call_watcher(
             c.in_call = false;
             c.call_id = None;
             c.remote_tag = None;
+            c.remote_rtp_addr = None;
+            c.rtp_receiver = None;
         }
     }
 }

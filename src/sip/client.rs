@@ -35,6 +35,8 @@ pub struct SipClient {
     pub remote_tag: Option<String>,
     pub in_call: bool,
     pub registered: Arc<Mutex<bool>>,
+    pub remote_rtp_addr: Option<SocketAddr>,
+    pub rtp_receiver: Option<crate::rtp::receiver::RtpReceiver>,
 }
 
 impl SipClient {
@@ -69,6 +71,8 @@ impl SipClient {
             remote_tag: None,
             in_call: false,
             registered: Arc::new(Mutex::new(false)),
+            remote_rtp_addr: None,
+            rtp_receiver: None,
         })
     }
 

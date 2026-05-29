@@ -182,7 +182,8 @@ impl SipClient {
             if final_status == 200 {
                 self.send_ack(target_uri, &local, &call_id, cseq).await?;
                 self.in_call = true;
-                log::info!("Call established!");
+                self.remote_rtp_addr = crate::service::watcher::parse_sdp_connection(&final_resp);
+                log::info!("Call established! Remote RTP: {:?}", self.remote_rtp_addr);
                 return Ok(true);
             }
             log::error!("Call failed (final status={})", final_status);
@@ -192,7 +193,8 @@ impl SipClient {
         if status == 200 {
             self.send_ack(target_uri, &local, &call_id, cseq).await?;
             self.in_call = true;
-            log::info!("Call established!");
+            self.remote_rtp_addr = crate::service::watcher::parse_sdp_connection(&resp);
+            log::info!("Call established! Remote RTP: {:?}", self.remote_rtp_addr);
             return Ok(true);
         }
 
@@ -259,6 +261,8 @@ impl SipClient {
             self.in_call = false;
             self.call_id = None;
             self.remote_tag = None;
+            self.remote_rtp_addr = None;
+            self.rtp_receiver = None;
             return Ok(true);
         }
 

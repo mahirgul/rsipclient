@@ -25,6 +25,7 @@ pub(crate) struct ManagedClient {
     pub codec: Codec,
     pub active: Arc<Mutex<bool>>,
     pub should_register: Arc<Mutex<bool>>,
+    pub audio_tx: tokio::sync::broadcast::Sender<Vec<i16>>,
 }
 
 /// The service that holds all managed clients and handles IPC
@@ -85,6 +86,7 @@ pub(crate) async fn create_managed_client(account: &Account) -> Result<ManagedCl
     .await?;
 
     let default_register = account.register_expiry.is_some();
+    let (audio_tx, _) = tokio::sync::broadcast::channel(1000);
 
     Ok(ManagedClient {
         account: account.clone(),
@@ -92,6 +94,7 @@ pub(crate) async fn create_managed_client(account: &Account) -> Result<ManagedCl
         codec,
         active: Arc::new(Mutex::new(true)),
         should_register: Arc::new(Mutex::new(default_register)),
+        audio_tx,
     })
 }
 
@@ -181,6 +184,7 @@ impl Service {
                     let account = mc.account.clone();
                     let shutdown = shutdown.clone();
                     let active = mc.active.clone();
+                    let audio_tx = mc.audio_tx.clone();
                     let account_name = name.clone();
                     log::info!("Auto-answer enabled for '{}'", account_name);
 
@@ -192,6 +196,7 @@ impl Service {
                             account,
                             shutdown,
                             active,
+                            audio_tx,
                         )
                         .await;
                     });

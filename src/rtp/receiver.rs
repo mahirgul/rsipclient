@@ -20,6 +20,7 @@ pub struct DtmfEvent {
 }
 
 /// RTP receiver state
+#[derive(Clone)]
 pub struct RtpReceiver {
     socket: Arc<UdpSocket>,
     /// Collected DTMF digits (RFC 2833 telephone-event, PT=101)
@@ -51,7 +52,11 @@ impl RtpReceiver {
 
     /// Start background receive loop (non-blocking).
     /// Spawns a task that continuously reads RTP packets and processes them.
-    pub fn start(&self) {
+    pub fn start(
+        &self,
+        codec: crate::rtp::codec::Codec,
+        audio_tx: Option<tokio::sync::broadcast::Sender<Vec<i16>>>,
+    ) {
         let socket = self.socket.clone();
         let dtmf_buf = self.dtmf_buffer.clone();
         let dtmf_events = self.dtmf_events.clone();
@@ -83,15 +88,16 @@ impl RtpReceiver {
                                 events.push(dtmf);
                             }
                         } else {
-                            // Audio packet — record if active
-                            let active = *recording_active.lock().await;
-                            if active {
-                                let payload = &buf[12..n];
-                                let samples: Vec<i16> = payload
-                                    .chunks_exact(2)
-                                    .map(|c| i16::from_be_bytes([c[0], c[1]]))
-                                    .collect();
-                                recording.lock().await.extend(&samples);
+                            // Audio packet — decode first
+                            let payload = &buf[12..n];
+                            if let Ok(samples) = codec.decode(payload) {
+                                let active = *recording_active.lock().await;
+                                if active {
+                                    recording.lock().await.extend(&samples);
+                                }
+                                if let Some(ref tx) = audio_tx {
+                                    let _ = tx.send(samples);
+                                }
                             }
 
                             // Track sequence
@@ -133,6 +139,32 @@ impl RtpReceiver {
     pub async fn stop_recording(&self) -> Vec<i16> {
         *self.recording_active.lock().await = false;
         self.recording.lock().await.clone()
+    }
+
+    /// Send raw PCM samples as RTP to the target address
+    pub async fn send_audio_samples(
+        &self,
+        samples: &[i16],
+        target: SocketAddr,
+        codec: crate::rtp::codec::Codec,
+        seq: &mut u16,
+        timestamp: &mut u32,
+    ) -> Result<()> {
+        let payload = codec.encode(samples)?;
+        let ssrc: u32 = 0x12345678;
+
+        let mut packet = Vec::with_capacity(12 + payload.len());
+        packet.push(0x80); // V=2, P=0, X=0, CC=0
+        packet.push(codec.payload_type());
+        packet.extend_from_slice(&seq.to_be_bytes());
+        packet.extend_from_slice(&timestamp.to_be_bytes());
+        packet.extend_from_slice(&ssrc.to_be_bytes());
+        packet.extend_from_slice(&payload);
+
+        self.socket.send_to(&packet, target).await?;
+        *seq = seq.wrapping_add(1);
+        *timestamp = timestamp.wrapping_add(samples.len() as u32);
+        Ok(())
     }
 }
 

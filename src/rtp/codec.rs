@@ -59,6 +59,15 @@ impl Codec {
             Codec::Opus => opus_encode(chunk),
         }
     }
+
+    /// Decode a chunk of bytes to linear 16-bit PCM samples
+    pub fn decode(&self, payload: &[u8]) -> Result<Vec<i16>> {
+        match self {
+            Codec::Pcmu => Ok(payload.iter().map(|&b| mulaw_to_linear(b)).collect()),
+            Codec::Pcma => Ok(payload.iter().map(|&b| alaw_to_linear(b)).collect()),
+            Codec::Opus => opus_decode(payload),
+        }
+    }
 }
 
 // ── G.711 μ-law ────────────────────────────────────────────
@@ -99,7 +108,6 @@ pub fn linear_to_mulaw(sample: i16) -> u8 {
 }
 
 /// G.711 μ-law → linear 16-bit PCM
-#[allow(dead_code)]
 pub fn mulaw_to_linear(mulaw: u8) -> i16 {
     let m = !mulaw;
     let sign = if (m & 0x80) != 0 { 1i16 } else { -1i16 };
@@ -148,7 +156,6 @@ pub fn linear_to_alaw(sample: i16) -> u8 {
 }
 
 /// G.711 A-law → linear 16-bit PCM
-#[allow(dead_code)]
 pub fn alaw_to_linear(alaw: u8) -> i16 {
     let a = alaw ^ 0x55;
     let sign = if (a & 0x80) != 0 { -1i16 } else { 1i16 };
@@ -182,5 +189,24 @@ pub fn opus_encode(chunk: &[i16]) -> Result<Vec<u8>> {
     #[cfg(not(feature = "opus"))]
     {
         Ok(chunk.iter().map(|&s| linear_to_mulaw(s)).collect())
+    }
+}
+
+/// Decode audio with Opus. Falls back to PCMU when opus feature is disabled.
+#[allow(unused_variables)]
+pub fn opus_decode(payload: &[u8]) -> Result<Vec<i16>> {
+    #[cfg(feature = "opus")]
+    {
+        use opus::{Channels, Decoder};
+        let mut decoder = Decoder::new(48000, Channels::Mono)?;
+        let mut output = vec![0i16; 5760]; // Max frame size
+        let n = decoder.decode(payload, &mut output, false)?;
+        output.truncate(n);
+        Ok(output)
+    }
+
+    #[cfg(not(feature = "opus"))]
+    {
+        Ok(payload.iter().map(|&b| mulaw_to_linear(b)).collect())
     }
 }

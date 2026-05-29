@@ -3,12 +3,16 @@
 use super::{create_managed_client, ManagedClient};
 use crate::config::{Account, Config};
 use axum::{
-    extract::{Path, State},
+    extract::{
+        ws::{Message, WebSocket, WebSocketUpgrade},
+        Path, State,
+    },
     http::{header, HeaderMap, StatusCode},
     response::{Html, IntoResponse, Json},
     routing::{delete, get, post, put},
     Router,
 };
+use futures_util::{sink::SinkExt, stream::StreamExt};
 use std::collections::HashMap;
 use std::sync::Arc;
 use sysinfo::System;
@@ -53,6 +57,8 @@ struct AccountStatus {
     registered: bool,
     in_call: bool,
     call_id: Option<String>,
+    codec: String,
+    codec_rate: u32,
 }
 
 /// Helper to verify Authorization header token
@@ -118,6 +124,13 @@ async fn get_status(
             active_calls += 1;
         }
 
+        let codec_str = mc
+            .account
+            .codec
+            .clone()
+            .unwrap_or_else(|| "pcmu".to_string());
+        let codec_rate = mc.codec.clock_rate();
+
         accounts.push(AccountStatus {
             name: name.clone(),
             username: client_lock.username.clone(),
@@ -127,6 +140,8 @@ async fn get_status(
             registered: is_registered,
             in_call: is_in_call,
             call_id: client_lock.call_id.clone(),
+            codec: codec_str,
+            codec_rate,
         });
     }
 
@@ -209,10 +224,19 @@ async fn add_account(
         let account = mc.account.clone();
         let shutdown = state.global_shutdown.clone();
         let active = mc.active.clone();
+        let audio_tx = mc.audio_tx.clone();
         let account_name = new_acc.name.clone();
         tokio::spawn(async move {
-            super::incoming_call_watcher(account_name, client, codec, account, shutdown, active)
-                .await;
+            super::incoming_call_watcher(
+                account_name,
+                client,
+                codec,
+                account,
+                shutdown,
+                active,
+                audio_tx,
+            )
+            .await;
         });
     }
 
@@ -259,10 +283,19 @@ async fn edit_account(
         let account = mc.account.clone();
         let shutdown = state.global_shutdown.clone();
         let active = mc.active.clone();
+        let audio_tx = mc.audio_tx.clone();
         let account_name = updated_acc.name.clone();
         tokio::spawn(async move {
-            super::incoming_call_watcher(account_name, client, codec, account, shutdown, active)
-                .await;
+            super::incoming_call_watcher(
+                account_name,
+                client,
+                codec,
+                account,
+                shutdown,
+                active,
+                audio_tx,
+            )
+            .await;
         });
     }
 
@@ -430,8 +463,12 @@ async fn reload_all_clients(
             let name = account_name.clone();
             let c_clone = client.clone();
             let a_clone = active.clone();
+            let audio_tx = mc.audio_tx.clone();
             tokio::spawn(async move {
-                super::incoming_call_watcher(name, c_clone, codec, acc, shutdown, a_clone).await;
+                super::incoming_call_watcher(
+                    name, c_clone, codec, acc, shutdown, a_clone, audio_tx,
+                )
+                .await;
             });
         }
 
@@ -459,6 +496,88 @@ async fn reload_all_clients(
     Ok(())
 }
 
+async fn audio_ws_handler(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    ws: WebSocketUpgrade,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let token = params.get("token").cloned();
+    if token.as_deref() != Some(&state.session_token) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    {
+        let cls = state.clients.lock().await;
+        if !cls.contains_key(&name) {
+            return Err(StatusCode::NOT_FOUND);
+        }
+    }
+
+    Ok(ws.on_upgrade(move |socket| handle_audio_ws(socket, state, name)))
+}
+
+async fn handle_audio_ws(socket: WebSocket, state: AppState, account_name: String) {
+    let clients = state.clients.lock().await;
+    let mc = match clients.get(&account_name) {
+        Some(mc) => mc,
+        None => return,
+    };
+
+    let mut audio_rx = mc.audio_tx.subscribe();
+    let client = mc.client.clone();
+    let codec = mc.codec;
+    drop(clients);
+
+    let (mut ws_sender, mut ws_receiver) = socket.split();
+
+    // Loop 1: Send incoming caller audio to browser (binary frames of Vec<i16>)
+    let mut send_task = tokio::spawn(async move {
+        while let Ok(samples) = audio_rx.recv().await {
+            let mut bytes = Vec::with_capacity(samples.len() * 2);
+            for sample in samples {
+                bytes.extend_from_slice(&sample.to_le_bytes());
+            }
+            if ws_sender.send(Message::Binary(bytes)).await.is_err() {
+                break;
+            }
+        }
+    });
+
+    // Loop 2: Receive browser microphone audio (binary frames of i16) and send it as RTP to caller
+    let client_clone = client.clone();
+    let mut recv_task = tokio::spawn(async move {
+        let mut seq = 0;
+        let mut timestamp = 0;
+
+        while let Some(Ok(msg)) = ws_receiver.next().await {
+            if let Message::Binary(bytes) = msg {
+                let mut samples = Vec::with_capacity(bytes.len() / 2);
+                for chunk in bytes.chunks_exact(2) {
+                    let sample = i16::from_le_bytes([chunk[0], chunk[1]]);
+                    samples.push(sample);
+                }
+
+                let cg = client_clone.lock().await;
+                if cg.in_call {
+                    if let (Some(ref rtp_rec), Some(target)) =
+                        (&cg.rtp_receiver, cg.remote_rtp_addr)
+                    {
+                        let _ = rtp_rec
+                            .send_audio_samples(&samples, target, codec, &mut seq, &mut timestamp)
+                            .await;
+                    }
+                }
+            }
+        }
+    });
+
+    tokio::select! {
+        _ = &mut send_task => { recv_task.abort(); }
+        _ = &mut recv_task => { send_task.abort(); }
+    }
+}
+
 /// Launch the Axum HTTP server
 pub async fn start_web_server(state: AppState, port: u16) {
     let app = Router::new()
@@ -474,6 +593,7 @@ pub async fn start_web_server(state: AppState, port: u16) {
         .route("/api/config", get(get_config))
         .route("/api/config", put(put_config))
         .route("/api/logs", get(get_logs))
+        .route("/api/accounts/:name/audio-ws", get(audio_ws_handler))
         .with_state(state);
 
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));

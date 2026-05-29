@@ -622,6 +622,15 @@
             </div>
         </header>
 
+        <!-- Audio Session Info Banner -->
+        <div id="audio-session-banner" class="glass" style="display: none; align-items: center; justify-content: space-between; padding: 0.75rem 1.25rem; margin-bottom: 1.5rem; border-color: rgba(16, 185, 129, 0.4); background: rgba(16, 185, 129, 0.1);">
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                <span style="font-size: 1.2rem; animation: pulse 1s infinite;">🎙️</span>
+                <span>Connected to call audio for account: <strong id="audio-session-account-name"></strong></span>
+            </div>
+            <button class="btn btn-danger" style="width: auto; padding: 0.4rem 1rem; font-size: 0.85rem;" onclick="leaveCallAudio()">Disconnect Audio</button>
+        </div>
+
         <!-- ── TAB: DASHBOARD ── -->
         <main id="tab-dashboard" class="tab-content active">
             <div class="stats-grid">
@@ -660,11 +669,12 @@
                                         <th>SIP Server</th>
                                         <th>Call ID</th>
                                         <th>State</th>
+                                        <th>Action</th>
                                     </tr>
                                 </thead>
                                 <tbody id="active-calls-body">
                                     <tr>
-                                        <td colspan="4" style="text-align: center; color: var(--text-secondary);">No active calls ongoing.</td>
+                                        <td colspan="5" style="text-align: center; color: var(--text-secondary);">No active calls ongoing.</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -1003,6 +1013,157 @@
             return `${hrs}:${mins}:${secs}`;
         }
 
+        // Audio stream state
+        let activeAudioSession = {
+            accountName: null,
+            ws: null,
+            audioCtx: null,
+            micStream: null,
+            sampleQueue: [],
+            playbackNode: null,
+            captureNode: null,
+            micSource: null
+        };
+
+        async function toggleJoinCall(accountName, codecRate) {
+            if (activeAudioSession.accountName === accountName) {
+                leaveCallAudio();
+            } else {
+                if (activeAudioSession.accountName) {
+                    leaveCallAudio();
+                }
+                await joinCallAudio(accountName, codecRate);
+            }
+        }
+
+        async function joinCallAudio(accountName, codecRate) {
+            try {
+                // 1. Get microphone permission
+                const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                
+                // 2. Open WebSocket connection
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const host = window.location.host;
+                const token = getSessionToken();
+                const wsUrl = `${protocol}//${host}/api/accounts/${accountName}/audio-ws?token=${token}`;
+                
+                const ws = new WebSocket(wsUrl);
+                ws.binaryType = 'arraybuffer';
+
+                // 3. Setup AudioContext
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: codecRate });
+                const sampleQueue = [];
+
+                // 4. Playback node (receiving PCM from WebSocket)
+                const bufferSize = 2048;
+                const playbackNode = audioCtx.createScriptProcessor(bufferSize, 0, 1);
+                playbackNode.onaudioprocess = function(e) {
+                    const outputBuffer = e.outputBuffer.getChannelData(0);
+                    for (let i = 0; i < outputBuffer.length; i++) {
+                        outputBuffer[i] = sampleQueue.shift() || 0.0;
+                    }
+                };
+                playbackNode.connect(audioCtx.destination);
+
+                // 5. Capture node (sending microphone audio over WS)
+                const micSource = audioCtx.createMediaStreamSource(micStream);
+                const captureNode = audioCtx.createScriptProcessor(bufferSize, 1, 0);
+                captureNode.onaudioprocess = function(e) {
+                    const inputBuffer = e.inputBuffer.getChannelData(0);
+                    const i16Samples = new Int16Array(inputBuffer.length);
+                    for (let i = 0; i < inputBuffer.length; i++) {
+                        i16Samples[i] = Math.max(-32768, Math.min(32767, inputBuffer[i] * 32768));
+                    }
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(i16Samples.buffer);
+                    }
+                };
+                micSource.connect(captureNode);
+                captureNode.connect(audioCtx.destination);
+
+                ws.onmessage = function(event) {
+                    const intData = new Int16Array(event.data);
+                    for (let i = 0; i < intData.length; i++) {
+                        sampleQueue.push(intData[i] / 32768.0);
+                    }
+                    if (sampleQueue.length > codecRate * 1.5) {
+                        sampleQueue.splice(0, sampleQueue.length - codecRate);
+                    }
+                };
+
+                ws.onclose = function() {
+                    console.log("Audio WebSocket closed.");
+                    if (activeAudioSession.accountName === accountName) {
+                        leaveCallAudio();
+                    }
+                };
+
+                ws.onerror = function(err) {
+                    console.error("Audio WebSocket error:", err);
+                };
+
+                activeAudioSession = {
+                    accountName,
+                    ws,
+                    audioCtx,
+                    micStream,
+                    sampleQueue,
+                    playbackNode,
+                    captureNode,
+                    micSource
+                };
+
+                document.getElementById('audio-session-account-name').innerText = accountName;
+                document.getElementById('audio-session-banner').style.display = 'flex';
+                
+                updateDashboard();
+
+            } catch (err) {
+                console.error("Failed to join call audio:", err);
+                alert("Could not access microphone or connect to audio service: " + err.message);
+            }
+        }
+
+        function leaveCallAudio() {
+            if (!activeAudioSession.accountName) return;
+
+            console.log("Leaving call audio session for:", activeAudioSession.accountName);
+
+            if (activeAudioSession.ws) {
+                activeAudioSession.ws.close();
+            }
+
+            if (activeAudioSession.micStream) {
+                activeAudioSession.micStream.getTracks().forEach(track => track.stop());
+            }
+
+            if (activeAudioSession.micSource && activeAudioSession.captureNode) {
+                activeAudioSession.micSource.disconnect();
+                activeAudioSession.captureNode.disconnect();
+            }
+            if (activeAudioSession.playbackNode) {
+                activeAudioSession.playbackNode.disconnect();
+            }
+
+            if (activeAudioSession.audioCtx) {
+                activeAudioSession.audioCtx.close();
+            }
+
+            activeAudioSession = {
+                accountName: null,
+                ws: null,
+                audioCtx: null,
+                micStream: null,
+                sampleQueue: [],
+                playbackNode: null,
+                captureNode: null,
+                micSource: null
+            };
+
+            document.getElementById('audio-session-banner').style.display = 'none';
+            updateDashboard();
+        }
+
         // Poll system statistics, active calls, and registration status
         async function updateDashboard() {
             try {
@@ -1055,20 +1216,35 @@
                     });
                 }
 
+                // If we have an active audio session, but the account is no longer in a call, disconnect
+                if (activeAudioSession.accountName) {
+                    const matched = status.accounts.find(a => a.name === activeAudioSession.accountName && a.in_call);
+                    if (!matched) {
+                        console.log("Active call ended, disconnecting audio session.");
+                        leaveCallAudio();
+                    }
+                }
+
                 // Build Active Calls Table
                 const callsBody = document.getElementById('active-calls-body');
                 callsBody.innerHTML = '';
                 const activeCalls = status.accounts.filter(a => a.in_call);
                 if (activeCalls.length === 0) {
-                    callsBody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-secondary);">No active calls ongoing.</td></tr>`;
+                    callsBody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-secondary);">No active calls ongoing.</td></tr>`;
                 } else {
                     activeCalls.forEach(call => {
                         const tr = document.createElement('tr');
+                        const isJoined = activeAudioSession.accountName === call.name;
+                        const joinText = isJoined ? "Leave Audio" : "Join Audio";
+                        const joinClass = isJoined ? "btn-danger" : "btn-success";
                         tr.innerHTML = `
                             <td style="font-weight:600;">${call.name}</td>
                             <td>${call.server}</td>
                             <td style="font-family: var(--font-mono); font-size:0.8rem;">${call.call_id || '-'}</td>
                             <td><span class="badge badge-success" style="animation: pulse 1.5s infinite;">IN CALL</span></td>
+                            <td>
+                                <button class="btn ${joinClass} action-btn action-btn-sm" style="width:auto; padding: 0.35rem 0.75rem;" onclick="toggleJoinCall('${call.name}', ${call.codec_rate})">${joinText}</button>
+                            </td>
                         `;
                         callsBody.appendChild(tr);
                     });

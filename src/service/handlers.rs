@@ -4,6 +4,7 @@
 //! "status", "shutdown", "play") and returns a Response.
 
 use crate::ipc::{Request, Response};
+use crate::rtp::receiver::RtpReceiver;
 use anyhow::Result;
 use std::collections::HashMap;
 
@@ -97,12 +98,26 @@ async fn handle_call(req: &Request, clients: &HashMap<String, ManagedClient>) ->
         Err(resp) => return resp,
     };
     let mut client = mc.client.lock().await;
+    let rtp_port = client.rtp_port_start;
+    let codec = mc.codec;
+    let audio_tx = mc.audio_tx.clone();
     match client.invite(&target).await {
-        Ok(true) => Response::ok(&format!(
-            "'{}' calling {} - established",
-            req.account.as_deref().unwrap(),
-            target
-        )),
+        Ok(true) => {
+            match RtpReceiver::bind(rtp_port).await {
+                Ok(receiver) => {
+                    receiver.start(codec, Some(audio_tx));
+                    client.rtp_receiver = Some(receiver);
+                }
+                Err(e) => {
+                    log::error!("Failed to bind RTP receiver for outgoing call: {}", e);
+                }
+            }
+            Response::ok(&format!(
+                "'{}' calling {} - established",
+                req.account.as_deref().unwrap(),
+                target
+            ))
+        }
         Ok(false) => Response::fail(&format!(
             "'{}' call to {} failed",
             req.account.as_deref().unwrap(),
