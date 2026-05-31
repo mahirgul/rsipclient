@@ -164,6 +164,7 @@ pub async fn incoming_call_watcher(
             let mut c = client.lock().await;
             c.in_call = true;
             c.call_id = Some(call_id.clone());
+            c.invite_cseq = Some(cseq);
             c.remote_tag = Some(from_tag.clone());
             c.remote_rtp_addr = remote_rtp;
             c.remote_uri = remote_uri;
@@ -276,8 +277,13 @@ pub async fn incoming_call_watcher(
         // Cleanup call state
         {
             let mut c = client.lock().await;
+            // Stop RTP receiver to prevent resource leak
+            if let Some(ref rx) = c.rtp_receiver {
+                rx.stop();
+            }
             c.in_call = false;
             c.call_id = None;
+            c.invite_cseq = None;
             c.remote_tag = None;
             c.remote_rtp_addr = None;
             c.remote_uri = None;
@@ -317,14 +323,18 @@ pub async fn registration_watcher(
 
     loop {
         if *shutdown.lock().await || !*active.lock().await {
-            let is_reg = {
-                let c = client.lock().await;
-                let val = *c.registered.lock().await;
-                val
-            };
-            if is_reg {
-                log::info!("[{}] Unregistering on shutdown/deactivate...", account_name);
-                let _ = client.lock().await.unregister().await;
+            // Only unregister if we actually wanted to be registered
+            let want_register = *should_register.lock().await;
+            if want_register {
+                let is_reg = {
+                    let c = client.lock().await;
+                    let val = *c.registered.lock().await;
+                    val
+                };
+                if is_reg {
+                    log::info!("[{}] Unregistering on shutdown/deactivate...", account_name);
+                    let _ = client.lock().await.unregister().await;
+                }
             }
             break;
         }

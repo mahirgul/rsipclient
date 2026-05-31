@@ -32,6 +32,8 @@ pub struct SipClient {
     pub auth_method: AuthMethod,
     pub settings: SipSettings,
     pub(crate) call_id: Option<String>,
+    /// CSeq used for the outstanding INVITE (needed for CANCEL to match RFC 3261)
+    pub(crate) invite_cseq: Option<u32>,
     pub remote_tag: Option<String>,
     pub in_call: bool,
     pub held: bool,
@@ -70,6 +72,7 @@ impl SipClient {
             auth_method,
             settings,
             call_id: None,
+            invite_cseq: None,
             remote_tag: None,
             in_call: false,
             held: false,

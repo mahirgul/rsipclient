@@ -141,6 +141,52 @@ pub fn build_invite(
     )
 }
 
+/// Build INVITE with MD5 Digest authentication header (for 401/407 challenges)
+pub fn build_invite_with_auth(
+    target_uri: &str,
+    username: &str,
+    password: &str,
+    domain: &str,
+    local_addr: &str,
+    local_tag: &str,
+    branch: &str,
+    call_id: &str,
+    cseq: u32,
+    sdp: &str,
+    realm: &str,
+    nonce: &str,
+    settings: &SipSettings,
+) -> String {
+    let uri = target_uri.to_string();
+    let response_digest = auth::compute_digest(username, password, realm, nonce, "INVITE", &uri);
+    let sdp_len = sdp.len();
+    let from = settings.format_from(username, domain);
+    let extra = settings.extra_headers();
+
+    format!(
+        "INVITE {} SIP/2.0\r\n\
+         Via: SIP/2.0/UDP {};branch={}\r\n\
+         Max-Forwards: 70\r\n\
+         From: {};tag={}\r\n\
+         To: <{}>\r\n\
+         Call-ID: {}\r\n\
+         CSeq: {} INVITE\r\n\
+         Contact: <sip:{}@{}>\r\n\
+         Authorization: Digest username=\"{}\", realm=\"{}\", nonce=\"{}\", uri=\"{}\", response=\"{}\", algorithm=MD5\r\n\
+         {}Content-Type: application/sdp\r\n\
+         Content-Length: {}\r\n\
+         \r\n\
+         {}",
+        target_uri, local_addr, branch,
+        from, local_tag,
+        target_uri,
+        call_id, cseq,
+        username, local_addr,
+        username, realm, nonce, uri, response_digest,
+        extra, sdp_len, sdp,
+    )
+}
+
 /// Build ACK request
 pub fn build_ack(
     target_uri: &str,

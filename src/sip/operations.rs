@@ -45,7 +45,8 @@ impl SipClient {
                 &local,
                 &self.local_tag,
                 &self.new_branch(),
-                &self.new_call_id(),
+                // Bug fix: reuse original Call-ID for auth retry (RFC 3261 §22.4)
+                &call_id,
                 self.next_cseq().await,
                 &realm,
                 &nonce,
@@ -111,7 +112,8 @@ impl SipClient {
                 &local,
                 &self.local_tag,
                 &self.new_branch(),
-                &self.new_call_id(),
+                // Bug fix: reuse original Call-ID for auth retry (RFC 3261 §22.4)
+                &call_id,
                 self.next_cseq().await,
                 &realm,
                 &nonce,
@@ -143,6 +145,7 @@ impl SipClient {
     // ── Invite ────────────────────────────────────────────
 
     /// Send INVITE to establish a call. Returns true if call is set up.
+    /// Handles 401/407 authentication challenges.
     pub async fn invite(&mut self, target_uri: &str) -> Result<bool> {
         self.remote_uri = Some(target_uri.to_string());
 
@@ -177,35 +180,109 @@ impl SipClient {
         let resp = self.send(&msg).await?;
         let status = utils::parse_status_code(&resp)?;
 
-        self.call_id = Some(call_id.clone());
-        self.remote_tag = utils::extract_to_tag(&resp);
+        // Handle 401/407 auth challenge for INVITE
+        if (status == 401 || status == 407) && self.auth_method == crate::sip::AuthMethod::Md5 {
+            let (realm, nonce) = utils::extract_auth_params(&resp)
+                .context("Cannot extract WWW-Authenticate params for INVITE")?;
+
+            let auth_cseq = self.next_cseq().await;
+            let auth_msg = build_invite_with_auth(
+                target_uri,
+                &self.username,
+                &self.password,
+                &self.domain,
+                &local,
+                &self.local_tag,
+                &self.new_branch(),
+                // Bug fix: reuse original Call-ID for auth retry (RFC 3261 §22.4)
+                &call_id,
+                auth_cseq,
+                &sdp_body,
+                &realm,
+                &nonce,
+                &self.settings,
+            );
+
+            let resp2 = self.send(&auth_msg).await?;
+            let status2 = utils::parse_status_code(&resp2)?;
+
+            if status2 == 200 {
+                self.call_id = Some(call_id.clone());
+                self.invite_cseq = Some(auth_cseq);
+                self.remote_tag = utils::extract_to_tag(&resp2);
+                self.remote_rtp_addr = crate::service::watcher::parse_sdp_connection(&resp2);
+                self.rtp_receiver = Some(receiver);
+                self.in_call = true;
+                self.send_ack(target_uri, &local, &call_id, auth_cseq)
+                    .await?;
+                log::info!(
+                    "Call established (with INVITE auth)! Remote RTP: {:?}",
+                    self.remote_rtp_addr
+                );
+                return Ok(true);
+            }
+
+            log::error!("Auth INVITE failed (status={})", status2);
+            // Clean up on auth failure
+            self.remote_uri = None;
+            return Ok(false);
+        }
+
+        // Don't set call state yet — wait for final response (Bug E fix)
 
         let mut final_status = status;
         let mut final_resp = resp.clone();
+        let mut final_tag = utils::extract_to_tag(&resp);
 
         while (100..200).contains(&final_status) {
             log::info!(
                 "Got provisional response {} — waiting for final...",
                 final_status
             );
-            final_resp = self.recv_extra(30000).await?;
-            final_status = utils::parse_status_code(&final_resp)?;
+            // Use match instead of ? to ensure cleanup on error (Bug C fix)
+            final_resp = match self.recv_extra(30000).await {
+                Ok(r) => r,
+                Err(e) => {
+                    log::error!("Error waiting for final response: {}", e);
+                    self.remote_uri = None;
+                    return Ok(false);
+                }
+            };
+            final_status = match utils::parse_status_code(&final_resp) {
+                Ok(s) => s,
+                Err(e) => {
+                    log::error!("Error parsing status: {}", e);
+                    self.remote_uri = None;
+                    return Ok(false);
+                }
+            };
             if let Some(t) = utils::extract_to_tag(&final_resp) {
-                self.remote_tag = Some(t);
+                final_tag = Some(t);
             }
         }
 
         if final_status == 200 {
-            self.send_ack(target_uri, &local, &call_id, cseq).await?;
+            // Set state only after confirmed success
+            self.call_id = Some(call_id.clone());
+            self.invite_cseq = Some(cseq);
+            self.remote_tag = final_tag;
             self.in_call = true;
             self.remote_rtp_addr = crate::service::watcher::parse_sdp_connection(&final_resp);
             self.rtp_receiver = Some(receiver);
+            self.send_ack(target_uri, &local, &call_id, cseq).await?;
             log::info!("Call established! Remote RTP: {:?}", self.remote_rtp_addr);
             return Ok(true);
         }
 
+        // ── Clean up on failure (Bug #2 fix) ──
         log::error!("Call failed (status={})", final_status);
+        self.in_call = false;
+        self.call_id = None;
+        self.invite_cseq = None;
+        self.remote_tag = None;
         self.remote_uri = None;
+        self.remote_rtp_addr = None;
+        self.rtp_receiver = None;
         Ok(false)
     }
 
@@ -237,7 +314,7 @@ impl SipClient {
 
     // ── Bye ───────────────────────────────────────────────
 
-    /// Send BYE to end the active call.
+    /// Send BYE to end the active call. Cleans up all call state and stops RTP.
     pub async fn bye(&mut self) -> Result<bool> {
         if !self.in_call {
             log::warn!("No active call");
@@ -265,28 +342,38 @@ impl SipClient {
         let resp = self.send(&msg).await?;
         let status = utils::parse_status_code(&resp)?;
 
-        if status == 200 {
-            log::info!("Call ended successfully");
-            self.in_call = false;
-            self.held = false;
-            self.call_id = None;
-            self.remote_tag = None;
-            self.remote_rtp_addr = None;
-            self.remote_uri = None;
-            self.rtp_receiver = None;
-            return Ok(true);
+        // Always clean up call state on BYE attempt (success or fail)
+        // Stop RTP receiver
+        if let Some(ref rx) = self.rtp_receiver {
+            rx.stop();
         }
 
-        log::error!("Failed to end call (status={})", status);
-        Ok(false)
+        if status == 200 {
+            log::info!("Call ended successfully");
+        } else {
+            log::error!("Failed to end call cleanly (status={})", status);
+        }
+        // Clean state regardless of BYE response
+        self.in_call = false;
+        self.held = false;
+        self.call_id = None;
+        self.invite_cseq = None;
+        self.remote_tag = None;
+        self.remote_rtp_addr = None;
+        self.remote_uri = None;
+        self.rtp_receiver = None;
+        Ok(status == 200)
     }
 
     // ── Cancel ────────────────────────────────────────────
 
     /// Send CANCEL for the current INVITE transaction.
-    pub async fn cancel(&self) -> Result<bool> {
+    /// Uses the same CSeq as the INVITE (RFC 3261 §9.1).
+    pub async fn cancel(&mut self) -> Result<bool> {
         let call_id = self.call_id.as_ref().context("No active call")?;
         let remote_uri = self.remote_uri.as_ref().context("No remote_uri")?;
+        // Bug #1 fix: use the INVITE's CSeq, not a new one
+        let invite_cseq = self.invite_cseq.context("No INVITE CSeq stored")?;
         let local = self.local_addr_str();
 
         let msg = build_cancel(
@@ -296,7 +383,7 @@ impl SipClient {
             &local,
             &self.local_tag,
             call_id,
-            self.next_cseq().await,
+            invite_cseq,
             &self.new_branch(),
             &self.settings,
         );
@@ -304,7 +391,22 @@ impl SipClient {
         let resp = self.send(&msg).await?;
         let status = utils::parse_status_code(&resp)?;
         log::info!("Cancel response: {}", status);
-        Ok(status == 200 || status == 487)
+
+        let success = status == 200 || status == 487;
+        if success {
+            // Bug #4 fix: clean up call state
+            if let Some(ref rx) = self.rtp_receiver {
+                rx.stop();
+            }
+            self.in_call = false;
+            self.call_id = None;
+            self.invite_cseq = None;
+            self.remote_tag = None;
+            self.remote_rtp_addr = None;
+            self.remote_uri = None;
+            self.rtp_receiver = None;
+        }
+        Ok(success)
     }
 
     /// Put the active call on hold

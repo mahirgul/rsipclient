@@ -154,7 +154,7 @@ async fn handle_cancel(req: &Request, clients: &HashMap<String, ManagedClient>) 
         Ok(name) => name,
         Err(resp) => return resp,
     };
-    let client = mc.client.lock().await;
+    let mut client = mc.client.lock().await;
     match client.cancel().await {
         Ok(true) => Response::ok(&format!("'{}' cancelled", req.account.as_deref().unwrap())),
         Ok(false) => Response::fail(&format!(
@@ -190,10 +190,12 @@ async fn handle_play(req: &Request, clients: &HashMap<String, ManagedClient>) ->
     let target = match client.remote_rtp_addr {
         Some(addr) => addr,
         None => {
-            log::warn!("No remote RTP address set for the call. Falling back to server address.");
-            format!("{}:{}", client.server_addr.ip(), client.rtp_port_start)
-                .parse()
-                .unwrap_or(client.server_addr)
+            // No remote RTP address known — the call may not have SDP yet.
+            // Return error instead of using a likely-incorrect fallback.
+            return Response::fail(&format!(
+                "No remote RTP address for '{}'; call may not be fully established",
+                account_name
+            ));
         }
     };
     let rtp_port = client.rtp_port_start;

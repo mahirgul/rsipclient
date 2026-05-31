@@ -75,22 +75,8 @@ async fn execute_cmd(req: Request, state: &CommandsServerState) -> Response {
         return Response::ok("Service is shutting down");
     }
 
-    // Set should_register flag appropriately for register/unregister command
-    if req.cmd == "register" {
-        if let Some(ref acc_name) = req.account {
-            let mut cls = state.clients.lock().await;
-            if let Some(mc) = cls.get_mut(acc_name) {
-                *mc.should_register.lock().await = true;
-            }
-        }
-    } else if req.cmd == "unregister" {
-        if let Some(ref acc_name) = req.account {
-            let mut cls = state.clients.lock().await;
-            if let Some(mc) = cls.get_mut(acc_name) {
-                *mc.should_register.lock().await = false;
-            }
-        }
-    }
+    // should_register is handled by process_command → handle_register/handle_unregister
+    // No need to set it here redundantly
 
     let cls = state.clients.lock().await;
     super::handlers::process_command(&req, &cls).await

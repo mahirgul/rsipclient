@@ -3,6 +3,7 @@
 
 use anyhow::Result;
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::net::UdpSocket;
 use tokio::sync::Mutex;
@@ -23,6 +24,8 @@ pub struct DtmfEvent {
 #[derive(Clone)]
 pub struct RtpReceiver {
     socket: Arc<UdpSocket>,
+    /// Signal to stop the background receive loop
+    stop_flag: Arc<AtomicBool>,
     /// Collected DTMF digits (RFC 2833 telephone-event, PT=101)
     dtmf_buffer: Arc<Mutex<String>>,
     /// Pending DTMF events
@@ -42,6 +45,7 @@ impl RtpReceiver {
         let socket = UdpSocket::bind(addr).await?;
         Ok(RtpReceiver {
             socket: Arc::new(socket),
+            stop_flag: Arc::new(AtomicBool::new(false)),
             dtmf_buffer: Arc::new(Mutex::new(String::new())),
             dtmf_events: Arc::new(Mutex::new(Vec::new())),
             recording: Arc::new(Mutex::new(Vec::new())),
@@ -63,6 +67,11 @@ impl RtpReceiver {
         Err(last_err.unwrap_or_else(|| anyhow::anyhow!("Invalid port range: {}-{}", start, end)))
     }
 
+    /// Signal the background receive loop to stop (idempotent, thread-safe)
+    pub fn stop(&self) {
+        self.stop_flag.store(true, Ordering::SeqCst);
+    }
+
     /// Get the underlying UDP socket (cloned Arc)
     pub fn socket(&self) -> Arc<UdpSocket> {
         self.socket.clone()
@@ -76,6 +85,7 @@ impl RtpReceiver {
         audio_tx: Option<tokio::sync::broadcast::Sender<Vec<i16>>>,
     ) {
         let socket = self.socket.clone();
+        let stop_flag = self.stop_flag.clone();
         let dtmf_buf = self.dtmf_buffer.clone();
         let dtmf_events = self.dtmf_events.clone();
         let recording = self.recording.clone();
@@ -85,8 +95,21 @@ impl RtpReceiver {
         tokio::spawn(async move {
             let mut buf = [0u8; 2048];
             loop {
-                match socket.recv_from(&mut buf).await {
-                    Ok((n, _src)) => {
+                // Check stop signal before each recv
+                if stop_flag.load(Ordering::Relaxed) {
+                    log::debug!("RTP receive loop stopped via stop signal");
+                    break;
+                }
+
+                // Wrap recv in timeout so stop_flag is checked regularly
+                let recv_result = tokio::time::timeout(
+                    std::time::Duration::from_secs(1),
+                    socket.recv_from(&mut buf),
+                )
+                .await;
+
+                match recv_result {
+                    Ok(Ok((n, _src))) => {
                         if n < 12 {
                             continue;
                         }
@@ -123,9 +146,13 @@ impl RtpReceiver {
                             *last_seq.lock().await = Some(seq);
                         }
                     }
-                    Err(e) => {
+                    Ok(Err(e)) => {
                         log::error!("RTP receive error: {}", e);
                         break;
+                    }
+                    Err(_elapsed) => {
+                        // Timeout — just loop back to check stop_flag
+                        continue;
                     }
                 }
             }

@@ -338,10 +338,14 @@ pub async fn register_account(
 ) -> Result<impl IntoResponse, StatusCode> {
     verify_token(&headers, &state)?;
 
-    let cls = state.clients.lock().await;
-    let mc = cls.get(&name).ok_or(StatusCode::NOT_FOUND)?;
-    *mc.should_register.lock().await = true;
-    let client = mc.client.lock().await;
+    // Set should_register flag and clone client Arc, then drop HashMap lock before I/O
+    let client_arc = {
+        let cls = state.clients.lock().await;
+        let mc = cls.get(&name).ok_or(StatusCode::NOT_FOUND)?;
+        *mc.should_register.lock().await = true;
+        mc.client.clone()
+    };
+    let client = client_arc.lock().await;
 
     match client.register().await {
         Ok(true) => Ok(Json(
@@ -364,10 +368,14 @@ pub async fn unregister_account(
 ) -> Result<impl IntoResponse, StatusCode> {
     verify_token(&headers, &state)?;
 
-    let cls = state.clients.lock().await;
-    let mc = cls.get(&name).ok_or(StatusCode::NOT_FOUND)?;
-    *mc.should_register.lock().await = false;
-    let client = mc.client.lock().await;
+    // Clone client Arc, then drop HashMap lock before I/O
+    let client_arc = {
+        let cls = state.clients.lock().await;
+        let mc = cls.get(&name).ok_or(StatusCode::NOT_FOUND)?;
+        *mc.should_register.lock().await = false;
+        mc.client.clone()
+    };
+    let client = client_arc.lock().await;
 
     match client.unregister().await {
         Ok(true) => Ok(Json(
@@ -389,12 +397,14 @@ pub async fn call_account(
     Json(payload): Json<CallRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
     verify_token(&headers, &state)?;
-    let cls = state.clients.lock().await;
-    let mc = cls.get(&name).ok_or(StatusCode::NOT_FOUND)?;
 
-    let mut client = mc.client.lock().await;
-    let codec = mc.codec;
-    let audio_tx = mc.audio_tx.clone();
+    // Clone everything we need, then drop HashMap lock before I/O
+    let (client_arc, codec, audio_tx) = {
+        let cls = state.clients.lock().await;
+        let mc = cls.get(&name).ok_or(StatusCode::NOT_FOUND)?;
+        (mc.client.clone(), mc.codec, mc.audio_tx.clone())
+    };
+    let mut client = client_arc.lock().await;
 
     match client.invite(&payload.target).await {
         Ok(true) => {
@@ -420,9 +430,12 @@ pub async fn hangup_account(
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, StatusCode> {
     verify_token(&headers, &state)?;
-    let cls = state.clients.lock().await;
-    let mc = cls.get(&name).ok_or(StatusCode::NOT_FOUND)?;
-    let mut client = mc.client.lock().await;
+    let client_arc = {
+        let cls = state.clients.lock().await;
+        let mc = cls.get(&name).ok_or(StatusCode::NOT_FOUND)?;
+        mc.client.clone()
+    };
+    let mut client = client_arc.lock().await;
     match client.bye().await {
         Ok(true) => Ok(Json(
             serde_json::json!({ "success": true, "msg": "Call ended" }),
@@ -442,9 +455,12 @@ pub async fn hold_account(
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, StatusCode> {
     verify_token(&headers, &state)?;
-    let cls = state.clients.lock().await;
-    let mc = cls.get(&name).ok_or(StatusCode::NOT_FOUND)?;
-    let mut client = mc.client.lock().await;
+    let client_arc = {
+        let cls = state.clients.lock().await;
+        let mc = cls.get(&name).ok_or(StatusCode::NOT_FOUND)?;
+        mc.client.clone()
+    };
+    let mut client = client_arc.lock().await;
     match client.hold().await {
         Ok(true) => Ok(Json(
             serde_json::json!({ "success": true, "msg": "Call put on hold" }),
@@ -464,9 +480,12 @@ pub async fn resume_account(
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, StatusCode> {
     verify_token(&headers, &state)?;
-    let cls = state.clients.lock().await;
-    let mc = cls.get(&name).ok_or(StatusCode::NOT_FOUND)?;
-    let mut client = mc.client.lock().await;
+    let client_arc = {
+        let cls = state.clients.lock().await;
+        let mc = cls.get(&name).ok_or(StatusCode::NOT_FOUND)?;
+        mc.client.clone()
+    };
+    let mut client = client_arc.lock().await;
     match client.resume().await {
         Ok(true) => Ok(Json(
             serde_json::json!({ "success": true, "msg": "Call resumed" }),
@@ -487,9 +506,12 @@ pub async fn transfer_account(
     Json(payload): Json<CallRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
     verify_token(&headers, &state)?;
-    let cls = state.clients.lock().await;
-    let mc = cls.get(&name).ok_or(StatusCode::NOT_FOUND)?;
-    let mut client = mc.client.lock().await;
+    let client_arc = {
+        let cls = state.clients.lock().await;
+        let mc = cls.get(&name).ok_or(StatusCode::NOT_FOUND)?;
+        mc.client.clone()
+    };
+    let mut client = client_arc.lock().await;
     match client.transfer(&payload.target).await {
         Ok(true) => Ok(Json(
             serde_json::json!({ "success": true, "msg": "Transfer initiated" }),
@@ -510,9 +532,12 @@ pub async fn dtmf_account(
     Json(payload): Json<DtmfRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
     verify_token(&headers, &state)?;
-    let cls = state.clients.lock().await;
-    let mc = cls.get(&name).ok_or(StatusCode::NOT_FOUND)?;
-    let mut client = mc.client.lock().await;
+    let client_arc = {
+        let cls = state.clients.lock().await;
+        let mc = cls.get(&name).ok_or(StatusCode::NOT_FOUND)?;
+        mc.client.clone()
+    };
+    let mut client = client_arc.lock().await;
     match client.send_dtmf(&payload.digits).await {
         Ok(true) => Ok(Json(
             serde_json::json!({ "success": true, "msg": format!("Sent DTMF: {}", payload.digits) }),
