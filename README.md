@@ -46,17 +46,17 @@ Ideal for:
 
 * **Linux & macOS (Bash/Sh):**
   ```bash
-  curl -fsSL https://raw.githubusercontent.com/mahirgul/rsipclient/main/install.sh | sh
+  curl -fsSL https://raw.githubusercontent.com/mahirgul/rsipclient/master/install.sh | sh
   ```
 
 * **Windows (PowerShell):**
   ```powershell
-  irm https://raw.githubusercontent.com/mahirgul/rsipclient/main/install.ps1 | iex
+  irm https://raw.githubusercontent.com/mahirgul/rsipclient/master/install.ps1 | iex
   ```
 
 * **Windows (CMD / Command Prompt):**
   ```cmd
-  curl -fsSL https://raw.githubusercontent.com/mahirgul/rsipclient/main/install.bat -o install.bat && install.bat && del install.bat
+  curl -fsSL https://raw.githubusercontent.com/mahirgul/rsipclient/master/install.bat -o install.bat && install.bat && del install.bat
   ```
 
 **Manual installation from source:**
