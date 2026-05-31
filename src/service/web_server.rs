@@ -71,10 +71,26 @@ async fn index() -> impl IntoResponse {
     Html(include_str!("web/index.html"))
 }
 
+async fn style_css() -> impl IntoResponse {
+    (
+        [(axum::http::header::CONTENT_TYPE, "text/css")],
+        include_str!("web/style.css"),
+    )
+}
+
+async fn app_js() -> impl IntoResponse {
+    (
+        [(axum::http::header::CONTENT_TYPE, "application/javascript")],
+        include_str!("web/app.js"),
+    )
+}
+
 /// Launch the Axum HTTP server
 pub async fn start_web_server(state: AppState, port: u16) {
     let app = Router::new()
         .route("/", get(index))
+        .route("/style.css", get(style_css))
+        .route("/app.js", get(app_js))
         .route("/api/login", post(login))
         .route("/api/status", get(get_status))
         .route("/api/accounts", get(get_accounts))
