@@ -255,9 +255,22 @@ pub async fn incoming_call_watcher(
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         }
 
-        // Abort the IVR task if it is still running
-        if let Some(task) = ivr_task {
-            task.abort();
+        // Wait for the IVR task to finish (e.g. saving voicemail WAV files)
+        if let Some(mut task) = ivr_task {
+            match tokio::time::timeout(std::time::Duration::from_secs(2), &mut task).await {
+                Ok(res) => {
+                    if let Err(e) = res {
+                        log::error!("[{}] IVR task joined with error: {:?}", account_name, e);
+                    }
+                }
+                Err(_) => {
+                    log::warn!(
+                        "[{}] IVR task did not finish in time, aborting",
+                        account_name
+                    );
+                    task.abort();
+                }
+            }
         }
 
         // Cleanup call state
@@ -304,6 +317,15 @@ pub async fn registration_watcher(
 
     loop {
         if *shutdown.lock().await || !*active.lock().await {
+            let is_reg = {
+                let c = client.lock().await;
+                let val = *c.registered.lock().await;
+                val
+            };
+            if is_reg {
+                log::info!("[{}] Unregistering on shutdown/deactivate...", account_name);
+                let _ = client.lock().await.unregister().await;
+            }
             break;
         }
 

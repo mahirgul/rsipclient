@@ -72,6 +72,9 @@ pub fn build_hold(
          c=IN IP4 {}\r\n\
          t=0 0\r\n\
          m=audio {} RTP/AVP 0 8 101\r\n\
+         a=rtpmap:0 PCMU/8000\r\n\
+         a=rtpmap:8 PCMA/8000\r\n\
+         a=rtpmap:101 telephone-event/8000\r\n\
          a={}\r\n",
         username, local_ip, local_ip, rtp_port, direction
     );

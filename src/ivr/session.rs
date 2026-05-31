@@ -34,8 +34,22 @@ impl IvrSession {
 
         // Menu loop
         loop {
+            // Check if call ended
+            let in_call = {
+                let cg = client.lock().await;
+                cg.in_call
+            };
+            if !in_call {
+                break;
+            }
+
             let digits = self
-                .collect_dtmf(receiver, self.config.timeout_secs, self.config.max_digits)
+                .collect_dtmf(
+                    client,
+                    receiver,
+                    self.config.timeout_secs,
+                    self.config.max_digits,
+                )
                 .await;
 
             let first_char = digits.chars().next();
@@ -96,12 +110,23 @@ impl IvrSession {
         });
 
         let dur = Duration::from_secs_f64(samples.len() as f64 / rate as f64);
-        tokio::time::sleep(dur).await;
+        let start_time = Instant::now();
+        while Instant::now().duration_since(start_time) < dur {
+            let in_call = {
+                let cg = client.lock().await;
+                cg.in_call
+            };
+            if !in_call {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
         Ok(())
     }
 
     async fn collect_dtmf(
         &self,
+        client: &Arc<Mutex<SipClient>>,
         receiver: &RtpReceiver,
         timeout_secs: u64,
         max_digits: usize,
@@ -113,6 +138,14 @@ impl IvrSession {
             if Instant::now() >= deadline {
                 break;
             }
+            // Check if call ended
+            let in_call = {
+                let cg = client.lock().await;
+                cg.in_call
+            };
+            if !in_call {
+                break;
+            }
             tokio::time::sleep(Duration::from_millis(200)).await;
 
             let new_digits = receiver.take_dtmf().await;
@@ -121,6 +154,14 @@ impl IvrSession {
             if all.len() >= max_digits || !new_digits.is_empty() {
                 let sub = Instant::now() + Duration::from_secs(2);
                 while Instant::now() < sub && all.len() < max_digits {
+                    // Check if call ended inside nested loop too
+                    let in_call_nested = {
+                        let cg = client.lock().await;
+                        cg.in_call
+                    };
+                    if !in_call_nested {
+                        break;
+                    }
                     tokio::time::sleep(Duration::from_millis(200)).await;
                     let more = receiver.take_dtmf().await;
                     if more.is_empty() {
@@ -179,9 +220,20 @@ impl IvrSession {
                 path,
                 duration_secs,
             } => {
-                log::info!("IVR: recording {}s to {}", duration_secs, path);
+                log::info!("IVR: recording up to {}s to {}", duration_secs, path);
                 receiver.start_recording().await;
-                tokio::time::sleep(Duration::from_secs(*duration_secs)).await;
+                let start_time = Instant::now();
+                let max_dur = Duration::from_secs(*duration_secs);
+                while Instant::now().duration_since(start_time) < max_dur {
+                    let in_call = {
+                        let cg = client.lock().await;
+                        cg.in_call
+                    };
+                    if !in_call {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
                 let samples = receiver.stop_recording().await;
                 save_wav(&samples, self.codec.clock_rate(), path)?;
                 log::info!("IVR: saved {} samples to {}", samples.len(), path);
