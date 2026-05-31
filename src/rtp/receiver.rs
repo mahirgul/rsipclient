@@ -196,7 +196,7 @@ impl RtpReceiver {
         timestamp: &mut u32,
     ) -> Result<()> {
         let payload = codec.encode(samples)?;
-        let ssrc: u32 = 0x12345678;
+        let ssrc: u32 = rand::random();
 
         let mut packet = Vec::with_capacity(12 + payload.len());
         packet.push(0x80); // V=2, P=0, X=0, CC=0
@@ -232,7 +232,7 @@ impl RtpReceiver {
             }
         };
 
-        let ssrc: u32 = 0x12345678;
+        let ssrc: u32 = rand::random();
         let event_timestamp = *timestamp;
 
         // Send 3 intermediate packets (duration = 160, 320, 480)

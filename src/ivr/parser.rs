@@ -20,10 +20,9 @@ pub fn parse_action(s: &str) -> IvrAction {
     } else if let Some(path) = s.strip_prefix("playback:") {
         IvrAction::Playback(path.to_string())
     } else if let Some(rest) = s.strip_prefix("record:") {
-        // Find last colon for duration
-        if let Some(last_colon_idx) = rest.rfind(':') {
-            let path = &rest[..last_colon_idx];
-            let secs_str = &rest[last_colon_idx + 1..];
+        // Use rsplit_once to correctly split path and duration
+        // e.g. "voicemail.wav:30" or "path/to/file.wav:60"
+        if let Some((path, secs_str)) = rest.rsplit_once(':') {
             let secs = secs_str.parse().ok().unwrap_or(10);
             IvrAction::Record {
                 path: path.to_string(),

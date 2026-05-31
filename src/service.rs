@@ -10,6 +10,7 @@ pub(crate) use watcher::{incoming_call_watcher, registration_watcher};
 use crate::config::{Account, Config};
 use crate::ipc::{Request, Response};
 use crate::rtp::codec::Codec;
+use crate::sip::transport::Transport;
 use crate::sip::{AuthMethod, SipClient, SipSettings};
 use anyhow::{Context, Result};
 use std::collections::HashMap;
@@ -45,14 +46,46 @@ pub struct Service {
 
 /// Helper to build a SipClient and wrap it in a ManagedClient
 pub(crate) async fn create_managed_client(account: &Account) -> Result<ManagedClient> {
-    let server_addr: SocketAddr = account
-        .server
-        .parse()
-        .context(format!("Invalid server address for '{}'", account.name))?;
+    let transport_type = account.transport.as_deref().unwrap_or("udp").to_lowercase();
 
-    let local_addr: SocketAddr = format!("0.0.0.0:{}", account.sip_port)
-        .parse()
-        .context(format!("Invalid local address for '{}'", account.name))?;
+    let default_port: u16 = if transport_type == "tls" { 5061 } else { 5060 };
+
+    // Parse server address, auto-appending default port if missing
+    let server_addr: SocketAddr = if account.server.contains(':') {
+        account.server.parse().context(format!(
+            "Invalid server address for '{}': {}",
+            account.name, account.server
+        ))?
+    } else {
+        format!("{}:{}", account.server, default_port)
+            .parse()
+            .context(format!(
+                "Invalid server address for '{}': {}",
+                account.name, account.server
+            ))?
+    };
+
+    let (transport, local_addr) = if transport_type == "tls" {
+        let bind_addr: SocketAddr = format!("0.0.0.0:{}", account.sip_port).parse()?;
+        let transport = Transport::new_tls(bind_addr, server_addr, &account.domain).await?;
+        let local_addr = transport.local_addr()?;
+        log::info!(
+            "Account '{}' using TLS transport to {}",
+            account.name,
+            server_addr
+        );
+        (transport, local_addr)
+    } else {
+        let bind_addr: SocketAddr = format!("0.0.0.0:{}", account.sip_port).parse()?;
+        let transport = Transport::new_udp(bind_addr).await?;
+        let local_addr = transport.local_addr()?;
+        log::info!(
+            "Account '{}' using UDP transport to {}",
+            account.name,
+            server_addr
+        );
+        (transport, local_addr)
+    };
 
     let auth_method = match account.auth_method.as_deref() {
         Some("none") | Some("None") => AuthMethod::None,
@@ -74,6 +107,7 @@ pub(crate) async fn create_managed_client(account: &Account) -> Result<ManagedCl
     );
 
     let client = SipClient::new(
+        transport,
         server_addr,
         local_addr,
         account.username.clone(),
@@ -83,6 +117,7 @@ pub(crate) async fn create_managed_client(account: &Account) -> Result<ManagedCl
         account.rtp_port_end,
         auth_method,
         sip_settings,
+        codec.to_config_str().to_string(),
     )
     .await?;
 

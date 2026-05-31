@@ -24,6 +24,15 @@ impl Codec {
         }
     }
 
+    /// Convert back to config string
+    pub fn to_config_str(self) -> &'static str {
+        match self {
+            Codec::Pcmu => "pcmu",
+            Codec::Pcma => "pcma",
+            Codec::Opus => "opus",
+        }
+    }
+
     /// RTP payload type number
     pub fn payload_type(&self) -> u8 {
         match self {
@@ -188,6 +197,11 @@ pub fn opus_encode(chunk: &[i16]) -> Result<Vec<u8>> {
 
     #[cfg(not(feature = "opus"))]
     {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static WARNED: AtomicBool = AtomicBool::new(false);
+        if !WARNED.swap(true, Ordering::Relaxed) {
+            log::warn!("Opus support not compiled — falling back to PCMU");
+        }
         Ok(chunk.iter().map(|&s| linear_to_mulaw(s)).collect())
     }
 }
@@ -207,6 +221,11 @@ pub fn opus_decode(payload: &[u8]) -> Result<Vec<i16>> {
 
     #[cfg(not(feature = "opus"))]
     {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static WARNED: AtomicBool = AtomicBool::new(false);
+        if !WARNED.swap(true, Ordering::Relaxed) {
+            log::warn!("Opus support not compiled — falling back to PCMU decode");
+        }
         Ok(payload.iter().map(|&b| mulaw_to_linear(b)).collect())
     }
 }

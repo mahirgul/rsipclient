@@ -434,6 +434,7 @@ impl SipClient {
             self.rtp_port_start,
             &self.settings,
             false, // resume = false
+            &self.codec,
         );
 
         let resp = self.send(&msg).await?;
@@ -471,6 +472,7 @@ impl SipClient {
             self.rtp_port_start,
             &self.settings,
             true, // resume = true
+            &self.codec,
         );
 
         let resp = self.send(&msg).await?;

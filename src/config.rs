@@ -101,6 +101,10 @@ pub struct Account {
     #[serde(default = "default_codec")]
     pub codec: Option<String>,
 
+    /// SIP transport: "udp" (default) or "tls"
+    #[serde(default = "default_transport")]
+    pub transport: Option<String>,
+
     // ── Identity ────────────────────────────────────────
     /// Display name in From header, e.g. "Alice Smith"
     pub display_name: Option<String>,
@@ -191,6 +195,10 @@ fn default_codec() -> Option<String> {
     Some("pcmu".to_string())
 }
 
+fn default_transport() -> Option<String> {
+    Some("udp".to_string())
+}
+
 fn default_register_expiry() -> Option<u32> {
     Some(3600)
 }
@@ -263,6 +271,19 @@ impl Config {
                         i,
                         account.name,
                         dtmf
+                    );
+                }
+            }
+
+            // Validate transport
+            if let Some(ref transport) = account.transport {
+                let t = transport.to_lowercase();
+                if t != "udp" && t != "tls" {
+                    anyhow::bail!(
+                        "Account #{} ({}) transport must be udp or tls, got '{}'",
+                        i,
+                        account.name,
+                        transport
                     );
                 }
             }

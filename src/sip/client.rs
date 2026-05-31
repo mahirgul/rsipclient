@@ -1,7 +1,7 @@
 //! SIP Client -- struct definition and low-level helpers
 
 use crate::sip::settings::SipSettings;
-use crate::sip::transport::UdpTransport;
+use crate::sip::transport::Transport;
 use crate::sip::utils;
 use anyhow::{Context, Result};
 use std::net::SocketAddr;
@@ -26,11 +26,12 @@ pub struct SipClient {
     pub domain: String,
     pub local_tag: String,
     pub cseq: Arc<Mutex<u32>>,
-    pub transport: UdpTransport,
+    pub transport: Transport,
     pub rtp_port_start: u16,
     pub rtp_port_end: u16,
     pub auth_method: AuthMethod,
     pub settings: SipSettings,
+    pub codec: String,
     pub(crate) call_id: Option<String>,
     /// CSeq used for the outstanding INVITE (needed for CANCEL to match RFC 3261)
     pub(crate) invite_cseq: Option<u32>,
@@ -45,8 +46,9 @@ pub struct SipClient {
 
 impl SipClient {
     pub async fn new(
+        transport: Transport,
         server_addr: SocketAddr,
-        mut local_addr: SocketAddr,
+        local_addr: SocketAddr,
         username: String,
         password: String,
         domain: String,
@@ -54,10 +56,8 @@ impl SipClient {
         rtp_port_end: u16,
         auth_method: AuthMethod,
         settings: SipSettings,
+        codec: String,
     ) -> Result<Self> {
-        let transport = UdpTransport::new(local_addr).await?;
-        local_addr = transport.local_addr()?;
-
         Ok(Self {
             server_addr,
             local_addr,
@@ -71,6 +71,7 @@ impl SipClient {
             rtp_port_end,
             auth_method,
             settings,
+            codec,
             call_id: None,
             invite_cseq: None,
             remote_tag: None,

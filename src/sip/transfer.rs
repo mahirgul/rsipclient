@@ -60,23 +60,29 @@ pub fn build_hold(
     rtp_port: u16,
     settings: &SipSettings,
     resume: bool,
+    codec: &str,
 ) -> String {
     let from = settings.format_from(username, domain);
     let direction = if resume { "sendrecv" } else { "sendonly" };
 
-    // Minimal SDP
+    // Build codec-specific SDP rtpmap lines
+    let (payload_type, rtpmap_line) = match codec {
+        "opus" => ("111", "a=rtpmap:111 opus/48000/2\r\n"),
+        "pcma" | "g711a" | "alaw" => ("8", "a=rtpmap:8 PCMA/8000\r\n"),
+        _ => ("0", "a=rtpmap:0 PCMU/8000\r\n"),
+    };
+
+    // SDP with configured codec, plus telephone-event
     let sdp = format!(
         "v=0\r\n\
          o={} 0 0 IN IP4 {}\r\n\
          s=hold\r\n\
          c=IN IP4 {}\r\n\
          t=0 0\r\n\
-         m=audio {} RTP/AVP 0 8 101\r\n\
-         a=rtpmap:0 PCMU/8000\r\n\
-         a=rtpmap:8 PCMA/8000\r\n\
-         a=rtpmap:101 telephone-event/8000\r\n\
+         m=audio {} RTP/AVP {} 101\r\n\
+         {}a=rtpmap:101 telephone-event/8000\r\n\
          a={}\r\n",
-        username, local_ip, local_ip, rtp_port, direction
+        username, local_ip, local_ip, rtp_port, payload_type, rtpmap_line, direction
     );
     let sdp_len = sdp.len();
 

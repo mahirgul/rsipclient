@@ -261,6 +261,7 @@ impl IvrSession {
                         cg.rtp_port_start,
                         &cg.settings,
                         false,
+                        self.codec.to_config_str(),
                     );
                     drop(cg);
                     self.send_sip(client, &msg).await?;
@@ -294,6 +295,7 @@ impl IvrSession {
                         cg.rtp_port_start,
                         &cg.settings,
                         true,
+                        self.codec.to_config_str(),
                     );
                     drop(cg);
                     self.send_sip(client, &msg).await?;

@@ -203,7 +203,7 @@ async fn handle_play(req: &Request, clients: &HashMap<String, ManagedClient>) ->
     let socket_opt = client.rtp_receiver.as_ref().map(|r| r.socket());
     drop(client);
 
-    match std::fs::read(&wav_path) {
+    match tokio::fs::read(&wav_path).await {
         Ok(data) => match crate::rtp::wav::parse_wav(&data) {
             Ok((info, samples)) => {
                 let sample_count = samples.len();

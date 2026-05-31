@@ -26,7 +26,7 @@ pub struct Cli {
     pub command: Option<Command>,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 pub enum Command {
     /// Start the SIP service daemon (listens for commands)
     Service {

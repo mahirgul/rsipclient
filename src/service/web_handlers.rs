@@ -608,9 +608,17 @@ pub async fn reload_all_clients(
 ) -> Result<(), anyhow::Error> {
     let mut cls = clients.lock().await;
 
-    // Stop all active call and registration watchers
+    // Gracefully stop old clients: end calls, stop RTP receivers, unregister
     for mc in cls.values() {
         *mc.active.lock().await = false;
+        // Stop the RTP receiver background loop
+        let client_guard = mc.client.lock().await;
+        if let Some(ref rtp_recv) = client_guard.rtp_receiver {
+            rtp_recv.stop();
+        }
+        // Try to unregister before dropping
+        drop(client_guard);
+        let _ = mc.client.lock().await.unregister().await;
     }
     cls.clear();
 

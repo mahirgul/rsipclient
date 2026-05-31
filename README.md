@@ -31,7 +31,6 @@ Ideal for:
 - **JSON TCP IPC** — control the service from any language
 - **Zero-copy RTP** — efficient G.711 en/decoding
 - **Single binary** — ~2 MB release build (no Opus), ~3 MB with Opus
-- **IVR / Auto-attendant** — answer incoming calls, play menus, collect DTMF
 - **Call transfer** via REFER (blind transfer)
 - **Call hold / resume** via re-INVITE
 - **Recording** — capture caller audio to WAV file

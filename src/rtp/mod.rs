@@ -42,9 +42,9 @@ pub async fn send_wav_rtp_on_socket(
     target: SocketAddr,
     codec: Codec,
 ) -> Result<usize> {
-    let ssrc: u32 = 0x12345678;
-    let mut seq: u16 = 0;
-    let mut timestamp: u32 = 0;
+    let ssrc: u32 = rand::random();
+    let mut seq: u16 = rand::random();
+    let mut timestamp: u32 = rand::random();
     let mut packet_count = 0;
 
     let target_rate = codec.clock_rate();

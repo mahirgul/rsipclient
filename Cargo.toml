@@ -1,6 +1,6 @@
 [package]
 name = "sip-client"
-version = "0.2.4"
+version = "0.3.0"
 edition = "2021"
 description = "Multi-account SIP client with IVR/auto-attendant, DTMF detection, call transfer, recording, and JSON TCP control — all in a single Rust binary"
 license = "MIT"
@@ -31,6 +31,8 @@ axum = { version = "0.7", features = ["ws"] }
 sysinfo = "0.30"
 opus = { version = "0.3", optional = true }
 base64 = "0.21"
+rand = "0.8"
+tokio-native-tls = "0.3"
 futures-util = "0.3"
 
 [profile.release]

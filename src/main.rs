@@ -50,8 +50,9 @@ async fn main() -> Result<()> {
             let disp = a.display_name.as_deref().unwrap_or("-");
             let asserted = a.asserted_id.as_deref().unwrap_or("-");
             let proxy = a.proxy.as_deref().unwrap_or("-");
+            let transport = a.transport.as_deref().unwrap_or("udp");
             println!(
-                "  {}. {}  {}@{}  display:\"{}\"  srv:{}  proxy:{}  SIP:{}  RTP:{}-{}  auth:{}  codec:{}  asserted:{}  expiry:{}s",
+                "  {}. {}  {}@{}  display:\"{}\"  srv:{}  proxy:{}  SIP:{}  RTP:{}-{}  auth:{}  codec:{}  transport:{}  asserted:{}  expiry:{}s",
                 i + 1,
                 a.name,
                 a.username,
@@ -64,6 +65,7 @@ async fn main() -> Result<()> {
                 a.rtp_port_end,
                 a.auth_method.as_deref().unwrap_or("md5"),
                 a.codec.as_deref().unwrap_or("pcmu"),
+                transport,
                 asserted,
                 a.register_expiry.unwrap_or(3600),
             );
@@ -89,7 +91,7 @@ async fn main() -> Result<()> {
         Command::Status => ("status", None, None),
         Command::Shutdown => ("shutdown", None, None),
         Command::Play { account, file } => ("play", Some(account.clone()), Some(file.clone())),
-        _ => unreachable!(),
+        _ => unreachable!("Unexpected CLI command: {:?}", cmd),
     };
 
     let req = match (cmd_str, account, target_opt.clone()) {
