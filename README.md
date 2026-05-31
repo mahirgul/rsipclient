@@ -4,13 +4,15 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-stable%201.70%2B-orange.svg)](https://rust-lang.org)
 
-**A multi-account SIP client with a built-in auto-attendant, written in pure async Rust.**
+**A multi-account SIP client with a built-in modern Web Dashboard, REST API, and IVR Engine, written in pure async Rust.**
 
-Place calls, play audio, detect DTMF, transfer callers, record voicemail — everything
-over a lightweight JSON TCP interface. No heavy frameworks, no JVM, just a single
-binary that speaks SIP + RTP.
+Place calls, play audio, detect DTMF, transfer callers, record voicemail, and configure settings using CLI commands, a JSON TCP interface, or the **beautiful interactive Web Dashboard / REST API**. No heavy frameworks, no JVM, just a single lightweight binary that speaks SIP + RTP.
+
+> [!NOTE]
+> 🌐 **Built-in Web Dashboard & REST API:** Configure your accounts, place calls, trigger DTMF, transfer calls, stream real-time logs, and even use your browser microphone/speakers as a **Web Softphone** (via WebSockets) directly through the modern web dashboard interface.
 
 Ideal for:
+- 💻 **Web Control & Dashboard** — full UI and REST API to manage accounts, calls, and real-time logs
 - ☎️ **Automated call routing** — IVR menus with DTMF-driven transfers
 - 🤖 **Voice bots** — script call flows via TCP commands
 - 🧪 **SIP testing** — generate and inspect SIP signalling from CLI
