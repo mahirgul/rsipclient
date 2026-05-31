@@ -5,35 +5,39 @@ Write-Host "=========================================" -ForegroundColor Cyan
 Write-Host "   Installing rsipclient (sip-client)    " -ForegroundColor Cyan
 Write-Host "=========================================" -ForegroundColor Cyan
 
-# Check for Rust/Cargo
-if ((Get-Command "cargo" -ErrorAction SilentlyContinue) -eq $null) {
-    Write-Host "Rust/Cargo was not found. Installing Rust toolchain..." -ForegroundColor Yellow
-    
-    $url = "https://win.rustup.rs/x86_64"
-    $output = "$env:TEMP\rustup-init.exe"
-    
-    Write-Host "Downloading rustup-init..."
-    Invoke-WebRequest -Uri $url -OutFile $output
-    
-    Write-Host "Running rustup-init (automatic installation)..."
-    Start-Process -FilePath $output -ArgumentList "-y" -Wait
-    Remove-Item $output
-    
-    # Refresh Path variable in the current session
-    $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+$version = "v0.2.2"
+$arch = "x86_64"
+if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64" -or $env:PROCESSOR_ARCHITEW6432 -eq "ARM64") {
+    $arch = "aarch64"
 }
 
-# Verify cargo is now available
-if ((Get-Command "cargo" -ErrorAction SilentlyContinue) -eq $null) {
-    Write-Warning "Cargo is still not in your PATH. Please restart your PowerShell session and run this script again."
-    exit 1
+$installDir = "$HOME\.rsipclient\bin"
+if (!(Test-Path $installDir)) {
+    New-Item -ItemType Directory -Path $installDir -Force | Out-Null
 }
 
-Write-Host "Compiling and installing rsipclient from GitHub..." -ForegroundColor Cyan
-cargo install --git https://github.com/mahirgul/rsipclient.git --force
+$binaryName = "sip-client.exe"
+$destPath = Join-Path $installDir $binaryName
+
+# Download URL
+$url = "https://github.com/mahirgul/rsipclient/releases/download/$version/sip-client-windows-$arch.exe"
+
+Write-Host "Downloading pre-compiled binary from $url..." -ForegroundColor Yellow
+
+# Download file
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+Invoke-WebRequest -Uri $url -OutFile $destPath
+
+# Add to PATH
+$userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+if ($userPath.Split(';') -notcontains $installDir) {
+    [System.Environment]::SetEnvironmentVariable("Path", "$userPath;$installDir", "User")
+    $env:Path = "$env:Path;$installDir"
+    Write-Host "Added $installDir to User PATH." -ForegroundColor Yellow
+}
 
 Write-Host ""
 Write-Host "=========================================" -ForegroundColor Green
 Write-Host " rsipclient successfully installed!" -ForegroundColor Green
-Write-Host " Run 'sip-client --help' to get started." -ForegroundColor Green
+Write-Host " Run 'sip-client --help' in a new window." -ForegroundColor Green
 Write-Host "=========================================" -ForegroundColor Green
