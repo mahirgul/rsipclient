@@ -112,6 +112,64 @@ The service listens on `127.0.0.1:5090`. Send one JSON command per line:
 {"cmd":"shutdown"}
 ```
 
+## Web Dashboard & REST API
+
+The service includes a built-in modern web dashboard and a fully-featured REST API. To use it, configure the Web settings in `config.toml`:
+
+```toml
+[web]
+port = 8080
+username = "admin"
+password = "supersecretpassword"
+session_token = "secure-random-token-here"
+```
+
+Start the service:
+```bash
+sip-client -c config.toml service
+```
+
+Then visit the Web Dashboard at `http://localhost:8080` to manage registrations, make calls, monitor status, and view real-time log streaming.
+
+### REST API Reference
+
+All requests must include the `Authorization: Bearer <session_token>` header (except `/api/login`).
+
+#### 1. Authentication
+* **POST `/api/login`**
+  * Body: `{"username": "admin", "password": "supersecretpassword"}`
+  * Response: `{"success": true, "token": "<session_token>"}`
+
+#### 2. Status & Monitoring
+* **GET `/api/status`**
+  * Response: Returns uptime, memory usage, CPU usage, and the status of all accounts (registered, in call, codec, etc.)
+* **GET `/api/logs`**
+  * Response: Returns the last 100 in-memory application log lines.
+
+#### 3. Account Management
+* **GET `/api/accounts`** — Retrieve all accounts
+* **POST `/api/accounts`** — Add a new account dynamically (persists to `config.toml`)
+  * Body: `{"name": "bob", "username": "bob", "domain": "sip.example.com", ...}`
+* **PUT `/api/accounts/:name`** — Edit an account configuration dynamically
+* **DELETE `/api/accounts/:name`** — Remove an account
+
+#### 4. Call Control
+* **POST `/api/accounts/:name/register`** — Register account manually
+* **POST `/api/accounts/:name/unregister`** — Unregister account manually
+* **POST `/api/accounts/:name/call`** — Dial a SIP target
+  * Body: `{"target": "sip:100@sip.example.com"}`
+* **POST `/api/accounts/:name/hangup`** — Hang up active call
+* **POST `/api/accounts/:name/hold`** — Place the call on hold
+* **POST `/api/accounts/:name/resume`** — Resume the call
+* **POST `/api/accounts/:name/transfer`** — Blind transfer the call
+  * Body: `{"target": "sip:200@sip.example.com"}`
+* **POST `/api/accounts/:name/dtmf`** — Send RFC 2833 DTMF digits
+  * Body: `{"digits": "1234#"}`
+
+#### 5. Web Softphone WebSocket
+* **GET `/api/accounts/:name/audio-ws?token=<token>`**
+  * Establishes a WebSocket connection. Bi-directional audio is streamed (16-bit linear PCM) between the browser microphone/speakers and the SIP call's RTP stream, turning the dashboard into a fully functional web phone.
+
 ## IVR / Auto-Attendant
 
 Auto-answer incoming calls and run a DTMF-driven menu:
@@ -216,7 +274,9 @@ src/
 │   ├── transport.rs   UDP transport
 │   └── utils.rs       Header parsers, ID gen
 └── service/
-    └── handlers.rs    Command dispatcher
+    ├── handlers.rs    Command dispatcher
+    ├── web_server.rs  Web server routing & startup
+    └── web_handlers.rs Web API handlers
 ```
 
 ## License
