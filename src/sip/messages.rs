@@ -174,6 +174,7 @@ pub fn build_ack(
 pub fn build_bye(
     username: &str,
     domain: &str,
+    remote_uri: &str,
     local_addr: &str,
     local_tag: &str,
     remote_tag: &str,
@@ -185,26 +186,16 @@ pub fn build_bye(
     let from = settings.format_from(username, domain);
 
     format!(
-        "BYE sip:{}@{} SIP/2.0\r\n\
+        "BYE {} SIP/2.0\r\n\
          Via: SIP/2.0/UDP {};branch={}\r\n\
          Max-Forwards: 70\r\n\
          From: {};tag={}\r\n\
-         To: <sip:{}@{}>;tag={}\r\n\
+         To: <{}>;tag={}\r\n\
          Call-ID: {}\r\n\
          CSeq: {} BYE\r\n\
          Content-Length: 0\r\n\
          \r\n",
-        username,
-        domain,
-        local_addr,
-        branch,
-        from,
-        local_tag,
-        username,
-        domain,
-        remote_tag,
-        call_id,
-        cseq
+        remote_uri, local_addr, branch, from, local_tag, remote_uri, remote_tag, call_id, cseq
     )
 }
 
@@ -212,6 +203,7 @@ pub fn build_bye(
 pub fn build_cancel(
     username: &str,
     domain: &str,
+    remote_uri: &str,
     local_addr: &str,
     local_tag: &str,
     call_id: &str,
@@ -222,15 +214,15 @@ pub fn build_cancel(
     let from = settings.format_from(username, domain);
 
     format!(
-        "CANCEL sip:{}@{} SIP/2.0\r\n\
+        "CANCEL {} SIP/2.0\r\n\
          Via: SIP/2.0/UDP {};branch={}\r\n\
          Max-Forwards: 70\r\n\
          From: {};tag={}\r\n\
-         To: <sip:{}@{}>\r\n\
+         To: <{}>\r\n\
          Call-ID: {}\r\n\
          CSeq: {} CANCEL\r\n\
          Content-Length: 0\r\n\
          \r\n",
-        username, domain, local_addr, branch, from, local_tag, username, domain, call_id, cseq
+        remote_uri, local_addr, branch, from, local_tag, remote_uri, call_id, cseq
     )
 }

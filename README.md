@@ -42,9 +42,27 @@ Ideal for:
 
 ### Install
 
+**Single-line installation from GitHub (automatically installs Rust if missing):**
+
+* **Linux & macOS (Bash/Sh):**
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/mahirgul/rsipclient/main/install.sh | sh
+  ```
+
+* **Windows (PowerShell):**
+  ```powershell
+  irm https://raw.githubusercontent.com/mahirgul/rsipclient/main/install.ps1 | iex
+  ```
+
+* **Windows (CMD / Command Prompt):**
+  ```cmd
+  curl -fsSL https://raw.githubusercontent.com/mahirgul/rsipclient/main/install.bat -o install.bat && install.bat && del install.bat
+  ```
+
+**Manual installation from source:**
+
 ```bash
-# From source
-git clone https://github.com/USER/rsipclient.git
+git clone https://github.com/mahirgul/rsipclient.git
 cd rsipclient
 cargo build --release
 

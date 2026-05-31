@@ -218,6 +218,60 @@ async fn handle_post_shutdown(
     Ok(Json(resp))
 }
 
+// ── POST /api/cmd/hold ──
+async fn handle_post_hold(
+    State(state): State<CommandsServerState>,
+    headers: HeaderMap,
+    Json(payload): Json<TargetAccountPayload>,
+) -> Result<impl IntoResponse, StatusCode> {
+    verify_auth(&headers, &state)?;
+    let req = Request::with_account("hold", &payload.account);
+    let resp = execute_cmd(req, &state).await;
+    Ok(Json(resp))
+}
+
+// ── POST /api/cmd/resume ──
+async fn handle_post_resume(
+    State(state): State<CommandsServerState>,
+    headers: HeaderMap,
+    Json(payload): Json<TargetAccountPayload>,
+) -> Result<impl IntoResponse, StatusCode> {
+    verify_auth(&headers, &state)?;
+    let req = Request::with_account("resume", &payload.account);
+    let resp = execute_cmd(req, &state).await;
+    Ok(Json(resp))
+}
+
+// ── POST /api/cmd/transfer ──
+async fn handle_post_transfer(
+    State(state): State<CommandsServerState>,
+    headers: HeaderMap,
+    Json(payload): Json<CallPayload>,
+) -> Result<impl IntoResponse, StatusCode> {
+    verify_auth(&headers, &state)?;
+    let req = Request::with_target("transfer", &payload.account, &payload.target);
+    let resp = execute_cmd(req, &state).await;
+    Ok(Json(resp))
+}
+
+// ── POST /api/cmd/dtmf ──
+#[derive(serde::Deserialize)]
+struct DtmfPayload {
+    account: String,
+    digits: String,
+}
+
+async fn handle_post_dtmf(
+    State(state): State<CommandsServerState>,
+    headers: HeaderMap,
+    Json(payload): Json<DtmfPayload>,
+) -> Result<impl IntoResponse, StatusCode> {
+    verify_auth(&headers, &state)?;
+    let req = Request::with_target("dtmf", &payload.account, &payload.digits);
+    let resp = execute_cmd(req, &state).await;
+    Ok(Json(resp))
+}
+
 /// Start the REST Commands server on the specified port
 pub async fn start_commands_server(state: CommandsServerState, port: u16) {
     let app = Router::new()
@@ -227,6 +281,10 @@ pub async fn start_commands_server(state: CommandsServerState, port: u16) {
         .route("/api/cmd/call", post(handle_post_call))
         .route("/api/cmd/hangup", post(handle_post_hangup))
         .route("/api/cmd/cancel", post(handle_post_cancel))
+        .route("/api/cmd/hold", post(handle_post_hold))
+        .route("/api/cmd/resume", post(handle_post_resume))
+        .route("/api/cmd/transfer", post(handle_post_transfer))
+        .route("/api/cmd/dtmf", post(handle_post_dtmf))
         .route("/api/cmd/play", post(handle_post_play))
         .route(
             "/api/cmd/status",

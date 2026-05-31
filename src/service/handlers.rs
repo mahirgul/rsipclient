@@ -4,7 +4,6 @@
 //! "status", "shutdown", "play") and returns a Response.
 
 use crate::ipc::{Request, Response};
-use crate::rtp::receiver::RtpReceiver;
 use anyhow::Result;
 use std::collections::HashMap;
 
@@ -19,6 +18,10 @@ pub async fn process_command(req: &Request, clients: &HashMap<String, ManagedCli
         "call" => handle_call(req, clients).await,
         "hangup" => handle_hangup(req, clients).await,
         "cancel" => handle_cancel(req, clients).await,
+        "hold" => handle_hold(req, clients).await,
+        "resume" => handle_resume(req, clients).await,
+        "transfer" => handle_transfer(req, clients).await,
+        "dtmf" => handle_dtmf(req, clients).await,
         "play" => handle_play(req, clients).await,
         "shutdown" => Response::ok("Shutting down..."),
         _ => Response::fail(&format!("Unknown command: '{}'", req.cmd)),
@@ -98,19 +101,12 @@ async fn handle_call(req: &Request, clients: &HashMap<String, ManagedClient>) ->
         Err(resp) => return resp,
     };
     let mut client = mc.client.lock().await;
-    let rtp_port = client.rtp_port_start;
     let codec = mc.codec;
     let audio_tx = mc.audio_tx.clone();
     match client.invite(&target).await {
         Ok(true) => {
-            match RtpReceiver::bind(rtp_port).await {
-                Ok(receiver) => {
-                    receiver.start(codec, Some(audio_tx));
-                    client.rtp_receiver = Some(receiver);
-                }
-                Err(e) => {
-                    log::error!("Failed to bind RTP receiver for outgoing call: {}", e);
-                }
+            if let Some(ref rx) = client.rtp_receiver {
+                rx.start(codec, Some(audio_tx));
             }
             Response::ok(&format!(
                 "'{}' calling {} - established",
@@ -191,9 +187,18 @@ async fn handle_play(req: &Request, clients: &HashMap<String, ManagedClient>) ->
         return Response::fail(&format!("'{}' has no active call", account_name));
     }
 
-    let target_addr = client.server_addr;
+    let target = match client.remote_rtp_addr {
+        Some(addr) => addr,
+        None => {
+            log::warn!("No remote RTP address set for the call. Falling back to server address.");
+            format!("{}:{}", client.server_addr.ip(), client.rtp_port_start)
+                .parse()
+                .unwrap_or(client.server_addr)
+        }
+    };
     let rtp_port = client.rtp_port_start;
     let codec = mc.codec;
+    let socket_opt = client.rtp_receiver.as_ref().map(|r| r.socket());
     drop(client);
 
     match std::fs::read(&wav_path) {
@@ -201,21 +206,22 @@ async fn handle_play(req: &Request, clients: &HashMap<String, ManagedClient>) ->
             Ok((info, samples)) => {
                 let sample_count = samples.len();
                 let sample_rate = info.sample_rate;
-                let target = format!("{}:{}", target_addr.ip(), rtp_port)
-                    .parse()
-                    .unwrap_or(target_addr);
 
                 tokio::spawn(async move {
-                    match crate::rtp::send_wav_rtp(
-                        &samples,
-                        sample_rate,
-                        target,
-                        0,
-                        rtp_port,
-                        codec,
-                    )
-                    .await
-                    {
+                    let res = if let Some(socket) = socket_opt {
+                        crate::rtp::send_wav_rtp_on_socket(
+                            &socket,
+                            &samples,
+                            sample_rate,
+                            target,
+                            codec,
+                        )
+                        .await
+                    } else {
+                        crate::rtp::send_wav_rtp(&samples, sample_rate, target, 0, rtp_port, codec)
+                            .await
+                    };
+                    match res {
                         Ok(n) => log::info!("Sent {} RTP packets (codec={:?})", n, codec),
                         Err(e) => log::error!("RTP send error: {}", e),
                     }
@@ -228,6 +234,112 @@ async fn handle_play(req: &Request, clients: &HashMap<String, ManagedClient>) ->
             Err(e) => Response::fail(&format!("WAV parse error: {}", e)),
         },
         Err(e) => Response::fail(&format!("Cannot read file '{}': {}", wav_path, e)),
+    }
+}
+
+async fn handle_hold(req: &Request, clients: &HashMap<String, ManagedClient>) -> Response {
+    let account_name = get_account(req, "hold", clients);
+    let mc = match account_name {
+        Ok(name) => name,
+        Err(resp) => return resp,
+    };
+    let mut client = mc.client.lock().await;
+    match client.hold().await {
+        Ok(true) => Response::ok(&format!(
+            "'{}' call put on hold",
+            req.account.as_deref().unwrap()
+        )),
+        Ok(false) => Response::fail(&format!(
+            "'{}' hold failed or no active call",
+            req.account.as_deref().unwrap()
+        )),
+        Err(e) => Response::fail(&format!(
+            "'{}' error: {}",
+            req.account.as_deref().unwrap(),
+            e
+        )),
+    }
+}
+
+async fn handle_resume(req: &Request, clients: &HashMap<String, ManagedClient>) -> Response {
+    let account_name = get_account(req, "resume", clients);
+    let mc = match account_name {
+        Ok(name) => name,
+        Err(resp) => return resp,
+    };
+    let mut client = mc.client.lock().await;
+    match client.resume().await {
+        Ok(true) => Response::ok(&format!(
+            "'{}' call resumed",
+            req.account.as_deref().unwrap()
+        )),
+        Ok(false) => Response::fail(&format!(
+            "'{}' resume failed or no active call",
+            req.account.as_deref().unwrap()
+        )),
+        Err(e) => Response::fail(&format!(
+            "'{}' error: {}",
+            req.account.as_deref().unwrap(),
+            e
+        )),
+    }
+}
+
+async fn handle_transfer(req: &Request, clients: &HashMap<String, ManagedClient>) -> Response {
+    let target = match &req.target {
+        Some(t) => t.clone(),
+        None => return Response::fail("'transfer' requires 'target' field"),
+    };
+    let account_name = get_account(req, "transfer", clients);
+    let mc = match account_name {
+        Ok(name) => name,
+        Err(resp) => return resp,
+    };
+    let mut client = mc.client.lock().await;
+    match client.transfer(&target).await {
+        Ok(true) => Response::ok(&format!(
+            "'{}' call transfer to {} initiated",
+            req.account.as_deref().unwrap(),
+            target
+        )),
+        Ok(false) => Response::fail(&format!(
+            "'{}' transfer failed or no active call",
+            req.account.as_deref().unwrap()
+        )),
+        Err(e) => Response::fail(&format!(
+            "'{}' error: {}",
+            req.account.as_deref().unwrap(),
+            e
+        )),
+    }
+}
+
+async fn handle_dtmf(req: &Request, clients: &HashMap<String, ManagedClient>) -> Response {
+    let digits = match &req.target {
+        Some(d) => d.clone(),
+        None => return Response::fail("'dtmf' requires 'target' (digits) field"),
+    };
+    let account_name = get_account(req, "dtmf", clients);
+    let mc = match account_name {
+        Ok(name) => name,
+        Err(resp) => return resp,
+    };
+    let mut client = mc.client.lock().await;
+    match client.send_dtmf(&digits).await {
+        Ok(true) => Response::ok(&format!(
+            "'{}' sent DTMF digits: {}",
+            req.account.as_deref().unwrap(),
+            digits
+        )),
+        Ok(false) => Response::fail(&format!(
+            "'{}' DTMF send failed or no active call",
+            req.account.as_deref().unwrap()
+        )),
+        Err(e) => Response::fail(&format!(
+            "'{}' error: {}",
+            req.account.as_deref().unwrap(),
+            e
+        )),
     }
 }
 

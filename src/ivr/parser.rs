@@ -15,31 +15,30 @@ pub fn parse_menu(raw: &HashMap<String, String>) -> IvrMenu {
 
 /// Parse a single action string into IvrAction
 pub fn parse_action(s: &str) -> IvrAction {
-    let parts: Vec<&str> = s.splitn(3, ':').collect();
-    match parts.first().copied() {
-        Some("transfer") => {
-            let target = if parts.len() > 2 {
-                format!("{}:{}", parts[1], parts[2])
-            } else {
-                parts.get(1).unwrap_or(&"").to_string()
-            };
-            IvrAction::Transfer(target)
-        }
-        Some("playback") => {
-            let path = parts.get(1).unwrap_or(&"").to_string();
-            IvrAction::Playback(path)
-        }
-        Some("record") => {
-            let path = parts.get(1).unwrap_or(&"recording.wav").to_string();
-            let secs: u64 = parts.get(2).and_then(|s| s.parse().ok()).unwrap_or(10);
+    if let Some(target) = s.strip_prefix("transfer:") {
+        IvrAction::Transfer(target.to_string())
+    } else if let Some(path) = s.strip_prefix("playback:") {
+        IvrAction::Playback(path.to_string())
+    } else if let Some(rest) = s.strip_prefix("record:") {
+        // Find last colon for duration
+        if let Some(last_colon_idx) = rest.rfind(':') {
+            let path = &rest[..last_colon_idx];
+            let secs_str = &rest[last_colon_idx + 1..];
+            let secs = secs_str.parse().ok().unwrap_or(10);
             IvrAction::Record {
-                path,
+                path: path.to_string(),
                 duration_secs: secs,
             }
+        } else {
+            IvrAction::Record {
+                path: rest.to_string(),
+                duration_secs: 10,
+            }
         }
-        Some("hold") => IvrAction::Hold,
-        Some("hangup") => IvrAction::Hangup,
-        _ => IvrAction::Hangup,
+    } else if s == "hold" {
+        IvrAction::Hold
+    } else {
+        IvrAction::Hangup
     }
 }
 

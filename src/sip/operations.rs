@@ -144,6 +144,13 @@ impl SipClient {
 
     /// Send INVITE to establish a call. Returns true if call is set up.
     pub async fn invite(&mut self, target_uri: &str) -> Result<bool> {
+        self.remote_uri = Some(target_uri.to_string());
+
+        // Find and bind a free RTP port in our range
+        let (receiver, bound_rtp_port) =
+            crate::rtp::receiver::RtpReceiver::bind_range(self.rtp_port_start, self.rtp_port_end)
+                .await?;
+
         let call_id = self.new_call_id();
         let branch = self.new_branch();
         let cseq = self.next_cseq().await;
@@ -151,7 +158,7 @@ impl SipClient {
         let sdp_body = sdp::build_sdp_default(
             &self.username,
             &self.local_addr.ip().to_string(),
-            self.rtp_port_start,
+            bound_rtp_port,
         );
 
         let msg = build_invite(
@@ -173,32 +180,32 @@ impl SipClient {
         self.call_id = Some(call_id.clone());
         self.remote_tag = utils::extract_to_tag(&resp);
 
-        if (100..200).contains(&status) {
-            log::info!("Got provisional response {} — waiting for final...", status);
-            let final_resp = self.recv_extra(30000).await?;
-            let final_status = utils::parse_status_code(&final_resp)?;
-            self.remote_tag = utils::extract_to_tag(&final_resp);
+        let mut final_status = status;
+        let mut final_resp = resp.clone();
 
-            if final_status == 200 {
-                self.send_ack(target_uri, &local, &call_id, cseq).await?;
-                self.in_call = true;
-                self.remote_rtp_addr = crate::service::watcher::parse_sdp_connection(&final_resp);
-                log::info!("Call established! Remote RTP: {:?}", self.remote_rtp_addr);
-                return Ok(true);
+        while (100..200).contains(&final_status) {
+            log::info!(
+                "Got provisional response {} — waiting for final...",
+                final_status
+            );
+            final_resp = self.recv_extra(30000).await?;
+            final_status = utils::parse_status_code(&final_resp)?;
+            if let Some(t) = utils::extract_to_tag(&final_resp) {
+                self.remote_tag = Some(t);
             }
-            log::error!("Call failed (final status={})", final_status);
-            return Ok(false);
         }
 
-        if status == 200 {
+        if final_status == 200 {
             self.send_ack(target_uri, &local, &call_id, cseq).await?;
             self.in_call = true;
-            self.remote_rtp_addr = crate::service::watcher::parse_sdp_connection(&resp);
+            self.remote_rtp_addr = crate::service::watcher::parse_sdp_connection(&final_resp);
+            self.rtp_receiver = Some(receiver);
             log::info!("Call established! Remote RTP: {:?}", self.remote_rtp_addr);
             return Ok(true);
         }
 
-        log::error!("Call failed (status={})", status);
+        log::error!("Call failed (status={})", final_status);
+        self.remote_uri = None;
         Ok(false)
     }
 
@@ -239,11 +246,13 @@ impl SipClient {
 
         let call_id = self.call_id.as_ref().context("No call_id")?;
         let remote_tag = self.remote_tag.as_ref().context("No remote_tag")?;
+        let remote_uri = self.remote_uri.as_ref().context("No remote_uri")?;
         let local = self.local_addr_str();
 
         let msg = build_bye(
             &self.username,
             &self.domain,
+            remote_uri,
             &local,
             &self.local_tag,
             remote_tag,
@@ -259,9 +268,11 @@ impl SipClient {
         if status == 200 {
             log::info!("Call ended successfully");
             self.in_call = false;
+            self.held = false;
             self.call_id = None;
             self.remote_tag = None;
             self.remote_rtp_addr = None;
+            self.remote_uri = None;
             self.rtp_receiver = None;
             return Ok(true);
         }
@@ -275,11 +286,13 @@ impl SipClient {
     /// Send CANCEL for the current INVITE transaction.
     pub async fn cancel(&self) -> Result<bool> {
         let call_id = self.call_id.as_ref().context("No active call")?;
+        let remote_uri = self.remote_uri.as_ref().context("No remote_uri")?;
         let local = self.local_addr_str();
 
         let msg = build_cancel(
             &self.username,
             &self.domain,
+            remote_uri,
             &local,
             &self.local_tag,
             call_id,
@@ -292,5 +305,133 @@ impl SipClient {
         let status = utils::parse_status_code(&resp)?;
         log::info!("Cancel response: {}", status);
         Ok(status == 200 || status == 487)
+    }
+
+    /// Put the active call on hold
+    pub async fn hold(&mut self) -> Result<bool> {
+        if !self.in_call {
+            log::warn!("No active call to hold");
+            return Ok(false);
+        }
+        let call_id = self.call_id.as_ref().context("No call_id")?;
+        let remote_tag = self.remote_tag.as_ref().context("No remote_tag")?;
+        let remote_uri = self.remote_uri.as_ref().context("No remote_uri")?;
+        let local = self.local_addr_str();
+
+        let msg = crate::sip::transfer::build_hold(
+            &self.username,
+            &self.domain,
+            remote_uri,
+            &self.local_addr.ip().to_string(),
+            &local,
+            &self.local_tag,
+            remote_tag,
+            call_id,
+            self.next_cseq().await,
+            &self.new_branch(),
+            self.rtp_port_start,
+            &self.settings,
+            false, // resume = false
+        );
+
+        let resp = self.send(&msg).await?;
+        let status = utils::parse_status_code(&resp)?;
+        if status == 200 {
+            self.held = true;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    /// Resume the active call from hold
+    pub async fn resume(&mut self) -> Result<bool> {
+        if !self.in_call {
+            log::warn!("No active call to resume");
+            return Ok(false);
+        }
+        let call_id = self.call_id.as_ref().context("No call_id")?;
+        let remote_tag = self.remote_tag.as_ref().context("No remote_tag")?;
+        let remote_uri = self.remote_uri.as_ref().context("No remote_uri")?;
+        let local = self.local_addr_str();
+
+        let msg = crate::sip::transfer::build_hold(
+            &self.username,
+            &self.domain,
+            remote_uri,
+            &self.local_addr.ip().to_string(),
+            &local,
+            &self.local_tag,
+            remote_tag,
+            call_id,
+            self.next_cseq().await,
+            &self.new_branch(),
+            self.rtp_port_start,
+            &self.settings,
+            true, // resume = true
+        );
+
+        let resp = self.send(&msg).await?;
+        let status = utils::parse_status_code(&resp)?;
+        if status == 200 {
+            self.held = false;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    /// Transfer the active call to a target URI
+    pub async fn transfer(&mut self, target_uri: &str) -> Result<bool> {
+        if !self.in_call {
+            log::warn!("No active call to transfer");
+            return Ok(false);
+        }
+        let call_id = self.call_id.as_ref().context("No call_id")?;
+        let remote_tag = self.remote_tag.as_ref().context("No remote_tag")?;
+        let remote_uri = self.remote_uri.as_ref().context("No remote_uri")?;
+        let local = self.local_addr_str();
+
+        let msg = crate::sip::transfer::build_refer(
+            &self.username,
+            &self.domain,
+            remote_uri,
+            target_uri,
+            &local,
+            &self.local_tag,
+            remote_tag,
+            call_id,
+            self.next_cseq().await,
+            &self.new_branch(),
+            &self.settings,
+        );
+
+        let resp = self.send(&msg).await?;
+        let status = utils::parse_status_code(&resp)?;
+        Ok(status == 200 || status == 202)
+    }
+
+    /// Send DTMF digits on the active call
+    pub async fn send_dtmf(&mut self, digits: &str) -> Result<bool> {
+        if !self.in_call {
+            log::warn!("No active call to send DTMF");
+            return Ok(false);
+        }
+        let target = self.remote_rtp_addr.context("No remote RTP address")?;
+        let rtp_receiver = self
+            .rtp_receiver
+            .as_ref()
+            .context("RTP receiver not started")?;
+
+        let mut seq = 0u16;
+        let mut timestamp = 0u32;
+
+        for c in digits.chars() {
+            rtp_receiver
+                .send_dtmf_digit(c, target, &mut seq, &mut timestamp)
+                .await?;
+        }
+
+        Ok(true)
     }
 }

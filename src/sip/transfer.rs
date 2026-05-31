@@ -6,6 +6,7 @@ use crate::sip::settings::SipSettings;
 pub fn build_refer(
     username: &str,
     domain: &str,
+    remote_uri: &str,
     refer_to: &str,
     local_addr: &str,
     local_tag: &str,
@@ -18,25 +19,23 @@ pub fn build_refer(
     let from = settings.format_from(username, domain);
 
     format!(
-        "REFER sip:{}@{} SIP/2.0\r\n\
+        "REFER {} SIP/2.0\r\n\
          Via: SIP/2.0/UDP {};branch={}\r\n\
          Max-Forwards: 70\r\n\
          From: {};tag={}\r\n\
-         To: <sip:{}@{}>;tag={}\r\n\
+         To: <{}>;tag={}\r\n\
          Call-ID: {}\r\n\
          CSeq: {} REFER\r\n\
          Contact: <sip:{}@{}>\r\n\
          Refer-To: <{}>\r\n\
          Content-Length: 0\r\n\
          \r\n",
-        username,
-        domain,
+        remote_uri,
         local_addr,
         branch,
         from,
         local_tag,
-        username,
-        domain,
+        remote_uri,
         remote_tag,
         call_id,
         cseq,
@@ -50,6 +49,7 @@ pub fn build_refer(
 pub fn build_hold(
     username: &str,
     domain: &str,
+    remote_uri: &str,
     local_ip: &str,
     local_addr: &str,
     local_tag: &str,
@@ -78,11 +78,11 @@ pub fn build_hold(
     let sdp_len = sdp.len();
 
     format!(
-        "INVITE sip:{}@{} SIP/2.0\r\n\
+        "INVITE {} SIP/2.0\r\n\
          Via: SIP/2.0/UDP {};branch={}\r\n\
          Max-Forwards: 70\r\n\
          From: {};tag={}\r\n\
-         To: <sip:{}@{}>;tag={}\r\n\
+         To: <{}>;tag={}\r\n\
          Call-ID: {}\r\n\
          CSeq: {} INVITE\r\n\
          Contact: <sip:{}@{}>\r\n\
@@ -90,14 +90,12 @@ pub fn build_hold(
          Content-Length: {}\r\n\
          \r\n\
          {}",
-        username,
-        domain,
+        remote_uri,
         local_addr,
         branch,
         from,
         local_tag,
-        username,
-        domain,
+        remote_uri,
         remote_tag,
         call_id,
         cseq,

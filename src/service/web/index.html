@@ -702,8 +702,23 @@
                     </div>
                 </div>
 
-                <!-- Right column: Diagnostics & System Metrics -->
+                <!-- Right column: Diagnostics & Dialer -->
                 <div>
+                    <div class="section-card glass" style="margin-bottom: 1.5rem;">
+                        <div class="section-title">Quick SIP Dialer</div>
+                        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            <div>
+                                <label style="display: block; font-size: 0.8rem; margin-bottom: 0.25rem; color: var(--text-secondary); font-weight: 500;">Select Account</label>
+                                <select id="dialer-account" style="width: 100%; padding: 0.55rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: rgba(255,255,255,0.05); color: var(--text-primary); font-size: 0.85rem; outline: none;"></select>
+                            </div>
+                            <div>
+                                <label style="display: block; font-size: 0.8rem; margin-bottom: 0.25rem; color: var(--text-secondary); font-weight: 500;">Target SIP URI</label>
+                                <input type="text" id="dialer-target" placeholder="sip:bob@sip.example.com" style="width: 100%; padding: 0.55rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: rgba(255,255,255,0.05); color: var(--text-primary); font-size: 0.85rem; outline: none;">
+                            </div>
+                            <button class="btn btn-success" onclick="placeOutboundCall()" style="width: 100%; font-size: 0.85rem; padding: 0.55rem;">Place Call</button>
+                        </div>
+                    </div>
+
                     <div class="section-card glass">
                         <div class="section-title">Diagnostics Monitor</div>
                         <div class="diag-list">
@@ -1175,7 +1190,21 @@
                 if (!res.ok) return;
 
                 const status = await res.json();
-                
+
+                // Update Dialer Dropdown
+                const dialerSelect = document.getElementById('dialer-account');
+                const previousSelection = dialerSelect.value;
+                dialerSelect.innerHTML = '';
+                status.accounts.forEach(acc => {
+                    const opt = document.createElement('option');
+                    opt.value = acc.name;
+                    opt.innerText = acc.name;
+                    dialerSelect.appendChild(opt);
+                });
+                if (previousSelection && Array.from(dialerSelect.options).some(o => o.value === previousSelection)) {
+                    dialerSelect.value = previousSelection;
+                }
+
                 // Set quick stats
                 document.getElementById('stat-total-accounts').innerText = status.total_accounts;
                 document.getElementById('stat-registered-accounts').innerText = status.registered_accounts;
@@ -1237,13 +1266,28 @@
                         const isJoined = activeAudioSession.accountName === call.name;
                         const joinText = isJoined ? "Leave Audio" : "Join Audio";
                         const joinClass = isJoined ? "btn-danger" : "btn-success";
+                        const stateBadge = call.held 
+                            ? `<span class="badge badge-warning" style="animation: pulse 2s infinite;">HELD</span>` 
+                            : `<span class="badge badge-success" style="animation: pulse 1.5s infinite;">IN CALL</span>`;
                         tr.innerHTML = `
                             <td style="font-weight:600;">${call.name}</td>
                             <td>${call.server}</td>
                             <td style="font-family: var(--font-mono); font-size:0.8rem;">${call.call_id || '-'}</td>
-                            <td><span class="badge badge-success" style="animation: pulse 1.5s infinite;">IN CALL</span></td>
-                            <td>
-                                <button class="btn ${joinClass} action-btn action-btn-sm" style="width:auto; padding: 0.35rem 0.75rem;" onclick="toggleJoinCall('${call.name}', ${call.codec_rate})">${joinText}</button>
+                            <td>${stateBadge}</td>
+                            <td style="display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap;">
+                                <button class="btn ${joinClass} action-btn action-btn-sm" style="width:auto; padding: 0.35rem 0.6rem; font-size: 0.75rem;" onclick="toggleJoinCall('${call.name}', ${call.codec_rate})">${joinText}</button>
+                                <button class="btn btn-warning action-btn action-btn-sm" style="width:auto; padding: 0.35rem 0.6rem; font-size: 0.75rem;" onclick="toggleHoldCall('${call.name}', ${call.held})">${call.held ? 'Resume' : 'Hold'}</button>
+                                <button class="btn btn-danger action-btn action-btn-sm" style="width:auto; padding: 0.35rem 0.6rem; font-size: 0.75rem;" onclick="hangupCall('${call.name}')">Hangup</button>
+                                
+                                <div style="display: inline-flex; gap: 0.2rem; background: rgba(255,255,255,0.05); padding: 0.2rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+                                    <input type="text" id="dtmf-${call.name}" placeholder="DTMF" style="width: 50px; background: transparent; border: none; color: #fff; font-size: 0.75rem; outline: none; text-align: center;">
+                                    <button class="btn btn-primary action-btn action-btn-sm" style="width:auto; padding: 0.2rem 0.4rem; font-size: 0.7rem; border-radius: 2px;" onclick="sendDtmfCall('${call.name}')">Send</button>
+                                </div>
+                                
+                                <div style="display: inline-flex; gap: 0.2rem; background: rgba(255,255,255,0.05); padding: 0.2rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+                                    <input type="text" id="refer-${call.name}" placeholder="Transfer URI" style="width: 100px; background: transparent; border: none; color: #fff; font-size: 0.75rem; outline: none; text-align: center;">
+                                    <button class="btn btn-primary action-btn action-btn-sm" style="width:auto; padding: 0.2rem 0.4rem; font-size: 0.7rem; border-radius: 2px;" onclick="transferCall('${call.name}')">Transfer</button>
+                                </div>
                             </td>
                         `;
                         callsBody.appendChild(tr);
@@ -1571,6 +1615,112 @@
                 }
             } catch (err) {
                 alert("Network error deleting account.");
+            }
+        }
+
+        async function placeOutboundCall() {
+            const account = document.getElementById('dialer-account').value;
+            const target = document.getElementById('dialer-target').value;
+            if (!account || !target) {
+                alert("Please select an account and enter a target URI.");
+                return;
+            }
+            try {
+                const res = await fetch(`${API_URL}/api/accounts/${account}/call`, {
+                    method: 'POST',
+                    headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ target })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('dialer-target').value = '';
+                    updateDashboard();
+                } else {
+                    alert("Call failed: " + data.msg);
+                }
+            } catch (err) {
+                alert("Error placing call: " + err);
+            }
+        }
+
+        async function hangupCall(name) {
+            if (!confirm(`Are you sure you want to end the call for '${name}'?`)) return;
+            try {
+                const res = await fetch(`${API_URL}/api/accounts/${name}/hangup`, {
+                    method: 'POST',
+                    headers: getAuthHeaders()
+                });
+                const data = await res.json();
+                if (data.success) {
+                    updateDashboard();
+                } else {
+                    alert("Hangup failed: " + data.msg);
+                }
+            } catch (err) {
+                alert("Error: " + err);
+            }
+        }
+
+        async function toggleHoldCall(name, isHeld) {
+            const endpoint = isHeld ? 'resume' : 'hold';
+            try {
+                const res = await fetch(`${API_URL}/api/accounts/${name}/${endpoint}`, {
+                    method: 'POST',
+                    headers: getAuthHeaders()
+                });
+                const data = await res.json();
+                if (data.success) {
+                    updateDashboard();
+                } else {
+                    alert(`Hold/Resume failed: ` + data.msg);
+                }
+            } catch (err) {
+                alert("Error: " + err);
+            }
+        }
+
+        async function sendDtmfCall(name) {
+            const input = document.getElementById(`dtmf-${name}`);
+            const digits = input.value;
+            if (!digits) return;
+            try {
+                const res = await fetch(`${API_URL}/api/accounts/${name}/dtmf`, {
+                    method: 'POST',
+                    headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ digits })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    input.value = '';
+                    console.log(`DTMF ${digits} sent successfully.`);
+                } else {
+                    alert("Failed to send DTMF: " + data.msg);
+                }
+            } catch (err) {
+                alert("Error: " + err);
+            }
+        }
+
+        async function transferCall(name) {
+            const input = document.getElementById(`refer-${name}`);
+            const target = input.value;
+            if (!target) return;
+            if (!confirm(`Transfer call to ${target}?`)) return;
+            try {
+                const res = await fetch(`${API_URL}/api/accounts/${name}/transfer`, {
+                    method: 'POST',
+                    headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ target })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    input.value = '';
+                    updateDashboard();
+                } else {
+                    alert("Transfer failed: " + data.msg);
+                }
+            } catch (err) {
+                alert("Error: " + err);
             }
         }
 

@@ -77,21 +77,22 @@ impl IvrSession {
         client: &Arc<Mutex<SipClient>>,
         wav_path: &str,
         remote: SocketAddr,
-        _receiver: &RtpReceiver,
+        receiver: &RtpReceiver,
     ) -> Result<()> {
         let data = std::fs::read(wav_path)?;
         let (_info, samples) = crate::rtp::wav::parse_wav(&data)?;
 
         let client_guard = client.lock().await;
-        let rtp_port = client_guard.rtp_port_start;
         let rate = self.codec.clock_rate();
         drop(client_guard);
 
         let codec = self.codec;
         let samples_clone = samples.clone();
+        let socket = receiver.socket().clone();
         tokio::spawn(async move {
             let _ =
-                crate::rtp::send_wav_rtp(&samples_clone, rate, remote, 0, rtp_port, codec).await;
+                crate::rtp::send_wav_rtp_on_socket(&socket, &samples_clone, rate, remote, codec)
+                    .await;
         });
 
         let dur = Duration::from_secs_f64(samples.len() as f64 / rate as f64);
@@ -148,9 +149,11 @@ impl IvrSession {
                 let cg = client.lock().await;
                 let call_id = cg.call_id.clone().unwrap_or_default();
                 let remote_tag = cg.remote_tag.clone().unwrap_or_default();
+                let remote_uri = cg.remote_uri.clone().unwrap_or_default();
                 let msg = transfer::build_refer(
                     &cg.username,
                     &cg.domain,
+                    &remote_uri,
                     target,
                     &cg.local_addr_str(),
                     &cg.local_tag,
@@ -191,9 +194,11 @@ impl IvrSession {
                     let cg = client.lock().await;
                     let call_id = cg.call_id.clone().unwrap_or_default();
                     let remote_tag = cg.remote_tag.clone().unwrap_or_default();
+                    let remote_uri = cg.remote_uri.clone().unwrap_or_default();
                     let msg = transfer::build_hold(
                         &cg.username,
                         &cg.domain,
+                        &remote_uri,
                         &cg.local_addr.ip().to_string(),
                         &cg.local_addr_str(),
                         &cg.local_tag,
@@ -222,9 +227,11 @@ impl IvrSession {
                     let cg = client.lock().await;
                     let call_id = cg.call_id.clone().unwrap_or_default();
                     let remote_tag = cg.remote_tag.clone().unwrap_or_default();
+                    let remote_uri = cg.remote_uri.clone().unwrap_or_default();
                     let msg = transfer::build_hold(
                         &cg.username,
                         &cg.domain,
+                        &remote_uri,
                         &cg.local_addr.ip().to_string(),
                         &cg.local_addr_str(),
                         &cg.local_tag,

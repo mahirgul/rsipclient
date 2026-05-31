@@ -48,6 +48,9 @@ pub async fn incoming_call_watcher(
 
         // Extract Call-ID, From tag, To tag, Contact, and remote RTP from SDP
         let from_tag = utils::extract_param(&msg, "From", "tag");
+        let from_header_val = utils::extract_header(&msg, "From");
+        let to_header_val = utils::extract_header(&msg, "To");
+        let remote_uri = utils::extract_uri(&from_header_val);
         let call_id = utils::extract_header(&msg, "Call-ID");
         let cseq_str = utils::extract_header(&msg, "CSeq");
         let cseq: u32 = cseq_str
@@ -55,23 +58,60 @@ pub async fn incoming_call_watcher(
             .next()
             .and_then(|s| s.parse().ok())
             .unwrap_or(1);
-        let via_branch = utils::extract_param(&msg, "Via", "branch");
+        let via_headers = utils::extract_headers_raw(&msg, "Via");
+        let via_block = via_headers.join("\r\n");
 
         // Parse remote RTP addr from SDP
         let remote_rtp = parse_sdp_connection(&msg);
+
+        // Find and bind a free RTP receiver in the range
+        let (rtp_port_start, rtp_port_end) = {
+            let c = client.lock().await;
+            (c.rtp_port_start, c.rtp_port_end)
+        };
+        let (receiver, bound_rtp_port) =
+            match RtpReceiver::bind_range(rtp_port_start, rtp_port_end).await {
+                Ok(r) => r,
+                Err(e) => {
+                    log::error!(
+                        "[{}] Failed to bind RTP receiver in range {}-{}: {}",
+                        account_name,
+                        rtp_port_start,
+                        rtp_port_end,
+                        e
+                    );
+                    let response = format!(
+                        "SIP/2.0 503 Service Unavailable\r\n\
+                         {}\r\n\
+                         From: {}\r\n\
+                         To: {}\r\n\
+                         Call-ID: {}\r\n\
+                         CSeq: {} INVITE\r\n\
+                         Content-Length: 0\r\n\
+                         \r\n",
+                        via_block, from_header_val, to_header_val, call_id, cseq,
+                    );
+                    let c = client.lock().await;
+                    let _ = c
+                        .transport
+                        .send_to(response.as_bytes(), c.server_addr)
+                        .await;
+                    continue;
+                }
+            };
 
         // Auto-answer: build 200 OK with SDP
         let response = {
             let c = client.lock().await;
             let local_ip = c.local_addr.ip().to_string();
-            let sdp_body = sdp::build_sdp_default(&c.username, &local_ip, c.rtp_port_start);
+            let sdp_body = sdp::build_sdp_default(&c.username, &local_ip, bound_rtp_port);
             let sdp_len = sdp_body.len();
 
             format!(
                 "SIP/2.0 200 OK\r\n\
-                 Via: SIP/2.0/UDP {};branch={}\r\n\
-                 From: <sip:{}@{}>;tag={}\r\n\
-                 To: <sip:{}@{}>;tag={}\r\n\
+                 {}\r\n\
+                 From: {}\r\n\
+                 To: {};tag={}\r\n\
                  Call-ID: {}\r\n\
                  CSeq: {} INVITE\r\n\
                  Contact: <sip:{}@{}>\r\n\
@@ -79,13 +119,9 @@ pub async fn incoming_call_watcher(
                  Content-Length: {}\r\n\
                  \r\n\
                  {}",
-                c.local_addr_str(),
-                via_branch,
-                c.username,
-                c.domain,
-                from_tag,
-                c.username,
-                c.domain,
+                via_block,
+                from_header_val,
+                to_header_val,
                 c.local_tag,
                 call_id,
                 cseq,
@@ -116,22 +152,11 @@ pub async fn incoming_call_watcher(
         };
 
         if !ack_received {
-            log::warn!("[{}] No ACK received, skipping IVR", account_name);
+            log::warn!("[{}] No ACK received, skipping call setup", account_name);
             continue;
         }
 
         // Start RTP receiver
-        let rtp_port = {
-            let c = client.lock().await;
-            c.rtp_port_start
-        };
-        let receiver = match RtpReceiver::bind(rtp_port).await {
-            Ok(r) => r,
-            Err(e) => {
-                log::error!("[{}] Failed to bind RTP receiver: {}", e, account_name);
-                continue;
-            }
-        };
         receiver.start(codec, Some(audio_tx.clone()));
 
         // Mark as in-call
@@ -141,24 +166,98 @@ pub async fn incoming_call_watcher(
             c.call_id = Some(call_id.clone());
             c.remote_tag = Some(from_tag.clone());
             c.remote_rtp_addr = remote_rtp;
+            c.remote_uri = remote_uri;
             c.rtp_receiver = Some(receiver.clone());
         }
 
-        // Run IVR if configured
-        if let Some(ivr_config) = ivr::build_ivr_config(&account) {
-            let remote_addr = match remote_rtp {
-                Some(addr) => addr,
-                None => {
-                    log::warn!("[{}] No RTP address in SDP", account_name);
-                    continue;
-                }
+        // Run IVR in background if configured
+        let ivr_task = if let Some(ivr_config) = ivr::build_ivr_config(&account) {
+            if let Some(remote_addr) = remote_rtp {
+                log::info!("[{}] Starting IVR session in background", account_name);
+                let session = ivr::IvrSession::new(ivr_config, codec);
+                let client_clone = client.clone();
+                let receiver_clone = receiver.clone();
+                let name_clone = account_name.clone();
+                Some(tokio::spawn(async move {
+                    if let Err(e) = session
+                        .run(&client_clone, remote_addr, &receiver_clone)
+                        .await
+                    {
+                        log::error!("[{}] IVR error: {}", name_clone, e);
+                    }
+                }))
+            } else {
+                log::warn!("[{}] No RTP address in SDP, skipping IVR", account_name);
+                None
+            }
+        } else {
+            None
+        };
+
+        // Keep waiting while the call is active (checking for BYE from remote)
+        loop {
+            let is_active = {
+                let c = client.lock().await;
+                c.in_call
+            };
+            if !is_active {
+                break;
+            }
+
+            // Poll for incoming SIP messages (like BYE)
+            let msg = {
+                let c = client.lock().await;
+                c.try_recv(200).await
             };
 
-            log::info!("[{}] Starting IVR session", account_name);
-            let session = ivr::IvrSession::new(ivr_config, codec);
-            if let Err(e) = session.run(&client, remote_addr, &receiver).await {
-                log::error!("[{}] IVR error: {}", e, account_name);
+            if let Some(m) = msg {
+                if m.starts_with("BYE") {
+                    log::info!("[{}] Remote party hung up (received BYE)", account_name);
+                    let from_header_val = utils::extract_header(&m, "From");
+                    let to_header_val = utils::extract_header(&m, "To");
+                    let call_id_val = utils::extract_header(&m, "Call-ID");
+                    let cseq_str = utils::extract_header(&m, "CSeq");
+                    let via_headers = utils::extract_headers_raw(&m, "Via");
+                    let via_block = via_headers.join("\r\n");
+
+                    let cseq_num = cseq_str
+                        .split_whitespace()
+                        .next()
+                        .and_then(|s| s.parse::<u32>().ok())
+                        .unwrap_or(1);
+
+                    let response = format!(
+                        "SIP/2.0 200 OK\r\n\
+                         {}\r\n\
+                         From: {}\r\n\
+                         To: {}\r\n\
+                         Call-ID: {}\r\n\
+                         CSeq: {} BYE\r\n\
+                         Content-Length: 0\r\n\
+                         \r\n",
+                        via_block, from_header_val, to_header_val, call_id_val, cseq_num,
+                    );
+
+                    {
+                        let c = client.lock().await;
+                        let _ = c
+                            .transport
+                            .send_to(response.as_bytes(), c.server_addr)
+                            .await;
+                    }
+
+                    let mut c = client.lock().await;
+                    c.in_call = false;
+                    break;
+                }
             }
+
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        }
+
+        // Abort the IVR task if it is still running
+        if let Some(task) = ivr_task {
+            task.abort();
         }
 
         // Cleanup call state
@@ -168,6 +267,7 @@ pub async fn incoming_call_watcher(
             c.call_id = None;
             c.remote_tag = None;
             c.remote_rtp_addr = None;
+            c.remote_uri = None;
             c.rtp_receiver = None;
         }
     }

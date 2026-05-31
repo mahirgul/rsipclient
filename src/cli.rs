@@ -4,7 +4,7 @@ use crate::ipc::DEFAULT_CONTROL_PORT;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "sip-client", version = "0.4.0")]
+#[command(name = "sip-client", version = env!("CARGO_PKG_VERSION"))]
 pub struct Cli {
     /// Path to TOML config file
     #[arg(short = 'c', long, default_value = "config.toml")]
@@ -50,6 +50,26 @@ pub enum Command {
 
     /// Cancel an ongoing INVITE
     Cancel,
+
+    /// Put current call on hold (sendonly)
+    Hold,
+
+    /// Resume current call from hold (sendrecv)
+    Resume,
+
+    /// Transfer current call to another target (REFER)
+    Transfer {
+        /// Target SIP URI to transfer to, e.g. sip:operator@example.com
+        #[arg(short = 't', long)]
+        target: String,
+    },
+
+    /// Send DTMF digits (RFC 2833 telephone-event)
+    Dtmf {
+        /// DTMF digits to send, e.g. "1234#*"
+        #[arg(short = 'd', long)]
+        digits: String,
+    },
 
     /// Show status of all accounts on the running service
     Status,

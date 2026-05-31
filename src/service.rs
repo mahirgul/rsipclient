@@ -2,6 +2,7 @@ pub(crate) mod commands_server;
 mod handlers;
 pub(crate) mod logger;
 pub(crate) mod watcher;
+pub(crate) mod web_handlers;
 pub(crate) mod web_server;
 
 pub(crate) use watcher::{incoming_call_watcher, registration_watcher};

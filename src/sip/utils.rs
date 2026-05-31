@@ -84,3 +84,28 @@ pub fn short_id(prefix: &str) -> String {
         Uuid::new_v4().to_string().split('-').next().unwrap()
     )
 }
+
+/// Extract SIP URI from a header value (e.g. `From: "Alice" <sip:alice@example.com>;tag=123` -> `sip:alice@example.com`)
+pub fn extract_uri(header: &str) -> Option<String> {
+    if let Some(start) = header.find('<') {
+        if let Some(end) = header[start..].find('>') {
+            return Some(header[start + 1..start + end].trim().to_string());
+        }
+    }
+    // Fallback: strip after semicolon if no brackets
+    let val = if let Some(idx) = header.find(';') {
+        &header[..idx]
+    } else {
+        header
+    };
+    Some(val.trim().to_string())
+}
+
+/// Extract all lines of a specific header name, returned as a vector of full header lines (e.g. `["Via: ...", "Via: ..."]`)
+pub fn extract_headers_raw(msg: &str, header_name: &str) -> Vec<String> {
+    let prefix = format!("{}:", header_name).to_lowercase();
+    msg.lines()
+        .filter(|l| l.to_lowercase().starts_with(&prefix))
+        .map(|l| l.trim().to_string())
+        .collect()
+}

@@ -75,8 +75,8 @@ Gracefully stop the service.
 ## Response format
 
 ```json
-{"status":"ok","message":"..."}
-{"status":"fail","message":"error description"}
+{"ok":true,"msg":"..."}
+{"ok":false,"msg":"error description"}
 ```
 
 ## Examples (netcat)

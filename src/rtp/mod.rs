@@ -31,6 +31,17 @@ pub async fn send_wav_rtp(
 ) -> Result<usize> {
     let bind_addr: SocketAddr = format!("0.0.0.0:{}", local_port).parse()?;
     let socket = UdpSocket::bind(bind_addr).await?;
+    send_wav_rtp_on_socket(&socket, samples, sample_rate, target, codec).await
+}
+
+/// Send linear PCM samples as RTP packets using the specified codec and an existing bound UDP socket.
+pub async fn send_wav_rtp_on_socket(
+    socket: &UdpSocket,
+    samples: &[i16],
+    sample_rate: u32,
+    target: SocketAddr,
+    codec: Codec,
+) -> Result<usize> {
     let ssrc: u32 = 0x12345678;
     let mut seq: u16 = 0;
     let mut timestamp: u32 = 0;
@@ -46,7 +57,8 @@ pub async fn send_wav_rtp(
         samples.to_vec()
     };
 
-    for chunk in resampled.chunks(samples_per_packet) {
+    let start_time = tokio::time::Instant::now();
+    for (i, chunk) in resampled.chunks(samples_per_packet).enumerate() {
         let payload: Vec<u8> = codec.encode(chunk)?;
 
         let mut packet = Vec::with_capacity(12 + payload.len());
@@ -61,6 +73,13 @@ pub async fn send_wav_rtp(
         packet_count += 1;
         seq = seq.wrapping_add(1);
         timestamp = timestamp.wrapping_add(chunk.len() as u32);
+
+        // Pace the packet sending to match the real-time sample duration
+        let expected_elapsed = std::time::Duration::from_secs_f64((i + 1) as f64 * 0.020);
+        let actual_elapsed = start_time.elapsed();
+        if actual_elapsed < expected_elapsed {
+            tokio::time::sleep(expected_elapsed - actual_elapsed).await;
+        }
     }
 
     Ok(packet_count)

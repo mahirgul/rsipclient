@@ -50,6 +50,24 @@ impl RtpReceiver {
         })
     }
 
+    /// Try to bind to any port in the range start..=end.
+    /// Returns the receiver and the bound port.
+    pub async fn bind_range(start: u16, end: u16) -> Result<(Self, u16)> {
+        let mut last_err = None;
+        for port in start..=end {
+            match Self::bind(port).await {
+                Ok(receiver) => return Ok((receiver, port)),
+                Err(e) => last_err = Some(e),
+            }
+        }
+        Err(last_err.unwrap_or_else(|| anyhow::anyhow!("Invalid port range: {}-{}", start, end)))
+    }
+
+    /// Get the underlying UDP socket (cloned Arc)
+    pub fn socket(&self) -> Arc<UdpSocket> {
+        self.socket.clone()
+    }
+
     /// Start background receive loop (non-blocking).
     /// Spawns a task that continuously reads RTP packets and processes them.
     pub fn start(
@@ -164,6 +182,82 @@ impl RtpReceiver {
         self.socket.send_to(&packet, target).await?;
         *seq = seq.wrapping_add(1);
         *timestamp = timestamp.wrapping_add(samples.len() as u32);
+        Ok(())
+    }
+
+    /// Send a single DTMF digit (RFC 2833 telephone-event, PT=101)
+    pub async fn send_dtmf_digit(
+        &self,
+        digit: char,
+        target: SocketAddr,
+        seq: &mut u16,
+        timestamp: &mut u32,
+    ) -> Result<()> {
+        let event = match digit {
+            '0'..='9' => digit as u8 - b'0',
+            '*' => 10,
+            '#' => 11,
+            'A'..='D' => digit as u8 - b'A' + 12,
+            'a'..='d' => digit as u8 - b'a' + 12,
+            _ => {
+                log::warn!("Invalid DTMF digit: '{}'", digit);
+                return Ok(());
+            }
+        };
+
+        let ssrc: u32 = 0x12345678;
+        let event_timestamp = *timestamp;
+
+        // Send 3 intermediate packets (duration = 160, 320, 480)
+        for step in 1..=3 {
+            let duration = (step * 160) as u16;
+            let mut payload = vec![0u8; 4];
+            payload[0] = event;
+            payload[1] = 0x0A; // E=0, R=0, Volume=10
+            payload[2] = (duration >> 8) as u8;
+            payload[3] = (duration & 0xFF) as u8;
+
+            let mut packet = Vec::with_capacity(12 + payload.len());
+            packet.push(0x80); // V=2, P=0, X=0, CC=0
+            packet.push(101); // Payload type for telephone-event
+            packet.extend_from_slice(&seq.to_be_bytes());
+            packet.extend_from_slice(&event_timestamp.to_be_bytes());
+            packet.extend_from_slice(&ssrc.to_be_bytes());
+            packet.extend_from_slice(&payload);
+
+            let _ = self.socket.send_to(&packet, target).await;
+            *seq = seq.wrapping_add(1);
+
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+
+        // Send 3 end packets (E=1, same duration)
+        let final_duration = 480u16;
+        for _ in 1..=3 {
+            let mut payload = vec![0u8; 4];
+            payload[0] = event;
+            payload[1] = 0x8A; // E=1, R=0, Volume=10
+            payload[2] = (final_duration >> 8) as u8;
+            payload[3] = (final_duration & 0xFF) as u8;
+
+            let mut packet = Vec::with_capacity(12 + payload.len());
+            packet.push(0x80); // V=2, P=0, X=0, CC=0
+            packet.push(101); // Payload type for telephone-event
+            packet.extend_from_slice(&seq.to_be_bytes());
+            packet.extend_from_slice(&event_timestamp.to_be_bytes());
+            packet.extend_from_slice(&ssrc.to_be_bytes());
+            packet.extend_from_slice(&payload);
+
+            let _ = self.socket.send_to(&packet, target).await;
+            *seq = seq.wrapping_add(1);
+        }
+
+        // Increment the main timestamp by the event duration (plus standard gap)
+        *timestamp = timestamp.wrapping_add(800);
+
+        // Wait a short gap between digits
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
         Ok(())
     }
 }
