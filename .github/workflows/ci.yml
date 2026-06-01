@@ -21,6 +21,7 @@ jobs:
           components: clippy, rustfmt
 
       - uses: Swatinem/rust-cache@v2
+        continue-on-error: true
 
       - name: Install Opus (Linux)
         run: sudo apt-get update && sudo apt-get install -y libopus-dev
@@ -43,6 +44,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
+        continue-on-error: true
 
       - name: Install Opus (Linux)
         if: runner.os == 'Linux'
@@ -64,6 +66,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
+        continue-on-error: true
 
       - name: Build docs
         run: cargo doc --no-deps --document-private-items
