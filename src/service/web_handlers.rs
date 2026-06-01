@@ -231,10 +231,6 @@ pub async fn edit_account(
     verify_token(&headers, &state)?;
 
     let mut cls = state.clients.lock().await;
-    let old_mc = cls.remove(&name).ok_or(StatusCode::NOT_FOUND)?;
-
-    // Stop watcher task of old client
-    *old_mc.active.lock().await = false;
 
     // Load config, update, save config
     let mut cfg =
@@ -247,16 +243,22 @@ pub async fn edit_account(
     cfg.save(&state.config_path)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    // Wait for the background watchers to drop their references to the old client, releasing the socket
-    let old_client_arc = old_mc.client.clone();
-    drop(old_mc);
+    // If the old client was successfully running/initialized, stop and drop it
+    if let Some(old_mc) = cls.remove(&name) {
+        // Stop watcher task of old client
+        *old_mc.active.lock().await = false;
 
-    let mut retries = 0;
-    while Arc::strong_count(&old_client_arc) > 1 && retries < 40 {
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        retries += 1;
+        // Wait for the background watchers to drop their references to the old client, releasing the socket
+        let old_client_arc = old_mc.client.clone();
+        drop(old_mc);
+
+        let mut retries = 0;
+        while Arc::strong_count(&old_client_arc) > 1 && retries < 40 {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            retries += 1;
+        }
+        drop(old_client_arc);
     }
-    drop(old_client_arc);
 
     // Create new managed client
     let mc = create_managed_client(&updated_acc).await.map_err(|e| {
@@ -325,17 +327,25 @@ pub async fn delete_account(
     verify_token(&headers, &state)?;
 
     let mut cls = state.clients.lock().await;
-    let old_mc = cls.remove(&name).ok_or(StatusCode::NOT_FOUND)?;
-
-    // Stop watcher task
-    *old_mc.active.lock().await = false;
 
     // Load config, remove, save config
     let mut cfg =
         Config::load(&state.config_path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    
+    // Check if the account exists in the config before trying to delete it
+    let exists_in_config = cfg.accounts.iter().any(|a| a.name == name);
+    if !exists_in_config {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
     cfg.accounts.retain(|a| a.name != name);
     cfg.save(&state.config_path)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Stop watcher task if the client was running
+    if let Some(old_mc) = cls.remove(&name) {
+        *old_mc.active.lock().await = false;
+    }
 
     Ok(Json(serde_json::json!({ "success": true })))
 }
