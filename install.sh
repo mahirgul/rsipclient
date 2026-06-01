@@ -6,7 +6,6 @@ echo "========================================="
 echo "   Installing rsipclient (sip-client)    "
 echo "========================================="
 
-VERSION="v0.2.3"
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH="$(uname -m)"
 
@@ -37,7 +36,7 @@ case "$ARCH" in
 esac
 
 BINARY_NAME="sip-client-${OS_NAME}-${ARCH_NAME}"
-URL="https://github.com/mahirgul/rsipclient/releases/download/${VERSION}/${BINARY_NAME}"
+URL="https://github.com/mahirgul/rsipclient/releases/latest/download/${BINARY_NAME}"
 INSTALL_DIR="$HOME/.rsipclient/bin"
 mkdir -p "$INSTALL_DIR"
 

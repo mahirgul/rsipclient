@@ -5,7 +5,6 @@ Write-Host "=========================================" -ForegroundColor Cyan
 Write-Host "   Installing rsipclient (sip-client)    " -ForegroundColor Cyan
 Write-Host "=========================================" -ForegroundColor Cyan
 
-$version = "v0.2.3"
 $arch = "x86_64"
 if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64" -or $env:PROCESSOR_ARCHITEW6432 -eq "ARM64") {
     $arch = "aarch64"
@@ -21,7 +20,7 @@ $binaryName = "sip-client.exe"
 $destPath = Join-Path $binDir $binaryName
 
 # Download URL
-$url = "https://github.com/mahirgul/rsipclient/releases/download/$version/sip-client-windows-$arch.exe"
+$url = "https://github.com/mahirgul/rsipclient/releases/latest/download/sip-client-windows-$arch.exe"
 
 Write-Host "Downloading pre-compiled binary from $url..." -ForegroundColor Yellow
 
