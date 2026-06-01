@@ -23,7 +23,7 @@ jobs:
             artifact: sip-client
             asset: sip-client-linux-x86_64
             name: linux-x86_64
-          - os: ubuntu-24.04-arm64
+          - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             artifact: sip-client
             asset: sip-client-linux-aarch64
