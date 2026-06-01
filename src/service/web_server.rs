@@ -85,12 +85,20 @@ async fn app_js() -> impl IntoResponse {
     )
 }
 
+async fn favicon() -> impl IntoResponse {
+    (
+        [(axum::http::header::CONTENT_TYPE, "image/x-icon")],
+        include_bytes!("web/favicon.ico").as_slice(),
+    )
+}
+
 /// Launch the Axum HTTP server
 pub async fn start_web_server(state: AppState, port: u16) {
     let app = Router::new()
         .route("/", get(index))
         .route("/style.css", get(style_css))
         .route("/app.js", get(app_js))
+        .route("/favicon.ico", get(favicon))
         .route("/api/login", post(login))
         .route("/api/status", get(get_status))
         .route("/api/accounts", get(get_accounts))
