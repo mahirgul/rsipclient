@@ -331,7 +331,7 @@ pub async fn delete_account(
     // Load config, remove, save config
     let mut cfg =
         Config::load(&state.config_path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    
+
     // Check if the account exists in the config before trying to delete it
     let exists_in_config = cfg.accounts.iter().any(|a| a.name == name);
     if !exists_in_config {
