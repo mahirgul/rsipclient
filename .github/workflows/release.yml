@@ -38,12 +38,12 @@ jobs:
             artifact: sip-client.exe
             asset: sip-client-windows-aarch64.exe
             name: windows-aarch64
-          - os: macos-13
+          - os: macos-latest
             target: x86_64-apple-darwin
             artifact: sip-client
             asset: sip-client-macos-x86_64
             name: macos-x86_64
-          - os: macos-14
+          - os: macos-latest
             target: aarch64-apple-darwin
             artifact: sip-client
             asset: sip-client-macos-aarch64
