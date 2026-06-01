@@ -21,6 +21,7 @@ pub struct AppState {
     pub web_password: String,
     pub session_token: String,
     pub start_time: std::time::Instant,
+    pub sys: Arc<Mutex<sysinfo::System>>,
 }
 
 #[derive(serde::Serialize)]
