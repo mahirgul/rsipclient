@@ -231,7 +231,7 @@ pub async fn edit_account(
     verify_token(&headers, &state)?;
 
     let mut cls = state.clients.lock().await;
-    let old_mc = cls.get(&name).ok_or(StatusCode::NOT_FOUND)?;
+    let old_mc = cls.remove(&name).ok_or(StatusCode::NOT_FOUND)?;
 
     // Stop watcher task of old client
     *old_mc.active.lock().await = false;
@@ -246,6 +246,17 @@ pub async fn edit_account(
     }
     cfg.save(&state.config_path)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Wait for the background watchers to drop their references to the old client, releasing the socket
+    let old_client_arc = old_mc.client.clone();
+    drop(old_mc);
+
+    let mut retries = 0;
+    while Arc::strong_count(&old_client_arc) > 1 && retries < 40 {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        retries += 1;
+    }
+    drop(old_client_arc);
 
     // Create new managed client
     let mc = create_managed_client(&updated_acc).await.map_err(|e| {
@@ -299,8 +310,7 @@ pub async fn edit_account(
         });
     }
 
-    // Remove old, insert new (handles renaming)
-    cls.remove(&name);
+    // Insert new (handles renaming)
     cls.insert(updated_acc.name.clone(), mc);
 
     Ok(Json(serde_json::json!({ "success": true })))
