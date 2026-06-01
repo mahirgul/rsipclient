@@ -41,7 +41,7 @@ INSTALL_DIR="$HOME/.rsipclient/bin"
 mkdir -p "$INSTALL_DIR"
 
 echo "Downloading ${BINARY_NAME} from ${URL}..."
-curl -L -o "$INSTALL_DIR/sip-client" "${URL}"
+curl -H "Cache-Control: no-cache" -L -o "$INSTALL_DIR/sip-client" "${URL}"
 chmod +x "$INSTALL_DIR/sip-client"
 
 # Create a basic config.toml if not exists

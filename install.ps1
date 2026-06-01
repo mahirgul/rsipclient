@@ -26,7 +26,7 @@ Write-Host "Downloading pre-compiled binary from $url..." -ForegroundColor Yello
 
 # Download file
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-Invoke-WebRequest -Uri $url -OutFile $destPath
+Invoke-WebRequest -Uri $url -OutFile $destPath -Headers @{"Cache-Control"="no-cache"}
 
 # Add to PATH
 $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
