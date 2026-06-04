@@ -41,7 +41,9 @@ pub fn extract_to_tag(response: &str) -> Option<String> {
 ///   `realm="sip.example.com"`  (quoted)
 ///   `expires=3600`             (unquoted)
 pub fn extract_quoted(line: &str, key: &str) -> Option<String> {
-    let start = line.find(key)? + key.len();
+    let lower_line = line.to_lowercase();
+    let lower_key = key.to_lowercase();
+    let start = lower_line.find(&lower_key)? + key.len();
     let rest = line[start..].trim_start();
 
     if let Some(inner) = rest.strip_prefix('"') {

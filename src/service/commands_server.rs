@@ -78,7 +78,10 @@ async fn execute_cmd(req: Request, state: &CommandsServerState) -> Response {
     // should_register is handled by process_command → handle_register/handle_unregister
     // No need to set it here redundantly
 
-    let cls = state.clients.lock().await;
+    let cls = {
+        let guard = state.clients.lock().await;
+        guard.clone()
+    };
     super::handlers::process_command(&req, &cls).await
 }
 

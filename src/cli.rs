@@ -7,19 +7,19 @@ use clap::{Parser, Subcommand};
 #[command(name = "sip-client", version = env!("CARGO_PKG_VERSION"))]
 pub struct Cli {
     /// Path to TOML config file
-    #[arg(short = 'c', long, default_value = "config.toml")]
+    #[arg(short = 'c', long, default_value = "config.toml", global = true)]
     pub config: String,
 
     /// Account name to use (if omitted, first account is used)
-    #[arg(short = 'a', long)]
+    #[arg(short = 'a', long, global = true)]
     pub account: Option<String>,
 
     /// Override SIP server address (host:port) - direct mode only
-    #[arg(short = 's', long)]
+    #[arg(short = 's', long, global = true)]
     pub server: Option<String>,
 
     /// Control port for service communication
-    #[arg(long, default_value_t = DEFAULT_CONTROL_PORT)]
+    #[arg(long, default_value_t = DEFAULT_CONTROL_PORT, global = true)]
     pub ctrl_port: u16,
 
     #[command(subcommand)]

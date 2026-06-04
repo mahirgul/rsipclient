@@ -56,7 +56,10 @@ pub async fn get_status(
 ) -> Result<impl IntoResponse, StatusCode> {
     verify_token(&headers, &state)?;
 
-    let cls = state.clients.lock().await;
+    let cls = {
+        let guard = state.clients.lock().await;
+        guard.clone()
+    };
 
     let mut total_accounts = 0;
     let mut registered_accounts = 0;

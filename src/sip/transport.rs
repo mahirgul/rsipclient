@@ -221,11 +221,12 @@ impl TlsTransport {
 
     fn parse_content_length(headers: &str) -> Option<usize> {
         for line in headers.lines() {
-            if line.len() < 16 {
-                continue;
-            }
             let lower = line.to_lowercase();
-            if let Some(val) = lower.strip_prefix("content-length:") {
+            let trimmed = lower.trim();
+            if let Some(val) = trimmed.strip_prefix("content-length:") {
+                return val.trim().parse().ok();
+            }
+            if let Some(val) = trimmed.strip_prefix("l:") {
                 return val.trim().parse().ok();
             }
         }

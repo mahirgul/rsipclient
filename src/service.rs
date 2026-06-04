@@ -21,6 +21,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 
 /// Wrapper for a managed SIP client (one per account)
+#[derive(Clone)]
 pub(crate) struct ManagedClient {
     pub account: Account,
     pub client: Arc<Mutex<SipClient>>,
@@ -368,7 +369,10 @@ impl Service {
 
         let is_shutdown = req.cmd == "shutdown";
         let resp = {
-            let cls = clients.lock().await;
+            let cls = {
+                let guard = clients.lock().await;
+                guard.clone()
+            };
             handlers::process_command(&req, &cls).await
         };
 
