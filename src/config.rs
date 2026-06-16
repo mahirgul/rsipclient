@@ -1,3 +1,8 @@
+//! Configuration module.
+//!
+//! Defines the structure and default values of the client configuration,
+//! including web server settings, command API config, accounts, and audio settings.
+
 use serde::{Deserialize, Serialize};
 use std::fs;
 

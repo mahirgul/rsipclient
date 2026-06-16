@@ -1,3 +1,8 @@
+//! IVR data structures and action types.
+//!
+//! Defines the actions (Playback, Record, Transfer, Hold, Hangup)
+//! and the menus mapped to DTMF digits.
+
 use std::collections::HashMap;
 
 /// IVR action after DTMF input

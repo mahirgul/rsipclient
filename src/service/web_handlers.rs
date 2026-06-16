@@ -1,3 +1,8 @@
+//! Web Dashboard API handlers registration.
+//!
+//! Submodules implement REST endpoints and WebSocket handlers for managing accounts,
+//! calls, system status, log streaming, and server configuration.
+
 pub mod accounts;
 pub mod audio_ws;
 pub mod auth;

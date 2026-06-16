@@ -1,3 +1,7 @@
+//! Web Dashboard API handlers for SIP accounts.
+//!
+//! Provides handlers to add, edit, delete, register, and unregister SIP accounts dynamically.
+
 use super::super::create_managed_client;
 use super::super::web_server::{verify_token, AppState};
 use crate::config::{Account, Config};

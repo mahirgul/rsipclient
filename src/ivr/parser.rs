@@ -1,3 +1,8 @@
+//! IVR configuration and action parser.
+//!
+//! Parses action strings (like "playback:", "record:", or "transfer:") and DTMF digit mappings
+//! from configuration to construct the active IVR menu logic.
+
 use crate::config::Account;
 use crate::ivr::types::{IvrAction, IvrConfig, IvrMenu};
 use std::collections::HashMap;

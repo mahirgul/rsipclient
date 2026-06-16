@@ -1,3 +1,7 @@
+//! Web Dashboard API handlers for SIP calls.
+//!
+//! Provides handlers to trigger calls, transfer, hold, resume, play audio, send DTMF, or hang up calls.
+
 use super::super::web_server::{verify_token, AppState};
 use axum::{
     extract::{Path, State},

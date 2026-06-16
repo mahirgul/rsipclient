@@ -1,3 +1,8 @@
+//! SIP service coordinator module.
+//!
+//! Exposes and coordinates background watchers, registration monitors,
+//! the IPC server for CLI commands, and the web-based manager dashboard.
+
 pub(crate) mod commands_server;
 mod handlers;
 pub(crate) mod logger;

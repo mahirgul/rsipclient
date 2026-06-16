@@ -1,3 +1,7 @@
+//! Web Dashboard API handlers for client configuration.
+//!
+//! Provides endpoints to fetch and update the global configuration dynamically.
+
 use super::super::web_server::{verify_token, AppState};
 use super::super::{create_managed_client, ManagedClient};
 use crate::config::Config;

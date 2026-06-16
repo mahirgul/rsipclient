@@ -1,3 +1,8 @@
+//! IVR (Interactive Voice Response) system module.
+//!
+//! Handles auto-attendant menus, parsing account DTMF navigation,
+//! and executing playback/record/transfer actions inside IVR call sessions.
+
 #![allow(unused_imports)]
 
 pub mod parser;

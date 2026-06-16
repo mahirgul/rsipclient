@@ -1,3 +1,7 @@
+//! Web Dashboard API WebSocket handler for streaming call audio.
+//!
+//! Streams real-time inbound call audio to connected web clients for dashboard playback.
+
 use super::super::web_server::AppState;
 use axum::{
     extract::{

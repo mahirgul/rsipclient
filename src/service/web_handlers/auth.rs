@@ -1,3 +1,7 @@
+//! Web Dashboard Authentication handler.
+//!
+//! Validates login credentials and returns session tokens for dashboard security.
+
 use super::super::web_server::AppState;
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 

@@ -1,3 +1,7 @@
+//! Web Dashboard API handlers for status and logging.
+//!
+//! Provides endpoints to fetch active call statuses, system resource utilization, and memory logs.
+
 use super::super::web_server::{verify_token, AccountStatus, AppState, StatusResponse};
 use axum::{
     extract::State,

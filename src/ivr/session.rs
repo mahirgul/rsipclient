@@ -1,3 +1,8 @@
+//! IVR (Interactive Voice Response) session manager.
+//!
+//! Controls the execution state of an active IVR call, handling incoming DTMF digits,
+//! executing configured playback, record, transfer, or menu actions, and stopping on hangup.
+
 use crate::ivr::types::{IvrAction, IvrConfig};
 use crate::rtp::codec::Codec;
 use crate::rtp::receiver::{save_wav, RtpReceiver};
