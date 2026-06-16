@@ -79,6 +79,27 @@ async fn style_css() -> impl IntoResponse {
     )
 }
 
+async fn auth_js() -> impl IntoResponse {
+    (
+        [(axum::http::header::CONTENT_TYPE, "application/javascript")],
+        include_str!("web/auth.js"),
+    )
+}
+
+async fn audio_js() -> impl IntoResponse {
+    (
+        [(axum::http::header::CONTENT_TYPE, "application/javascript")],
+        include_str!("web/audio.js"),
+    )
+}
+
+async fn config_js() -> impl IntoResponse {
+    (
+        [(axum::http::header::CONTENT_TYPE, "application/javascript")],
+        include_str!("web/config.js"),
+    )
+}
+
 async fn app_js() -> impl IntoResponse {
     (
         [(axum::http::header::CONTENT_TYPE, "application/javascript")],
@@ -98,6 +119,9 @@ pub async fn start_web_server(state: AppState, port: u16) {
     let app = Router::new()
         .route("/", get(index))
         .route("/style.css", get(style_css))
+        .route("/auth.js", get(auth_js))
+        .route("/audio.js", get(audio_js))
+        .route("/config.js", get(config_js))
         .route("/app.js", get(app_js))
         .route("/favicon.ico", get(favicon))
         .route("/api/login", post(login))
@@ -114,6 +138,7 @@ pub async fn start_web_server(state: AppState, port: u16) {
         .route("/api/accounts/:name/resume", post(resume_account))
         .route("/api/accounts/:name/transfer", post(transfer_account))
         .route("/api/accounts/:name/dtmf", post(dtmf_account))
+        .route("/api/accounts/:name/play", post(play_account))
         .route("/api/config", get(get_config))
         .route("/api/config", put(put_config))
         .route("/api/logs", get(get_logs))

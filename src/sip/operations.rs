@@ -147,6 +147,14 @@ impl SipClient {
     /// Send INVITE to establish a call. Returns true if call is set up.
     /// Handles 401/407 authentication challenges.
     pub async fn invite(&mut self, target_uri: &str) -> Result<bool> {
+        let formatted_uri = if target_uri.starts_with("sip:") || target_uri.starts_with("sips:") {
+            target_uri.to_string()
+        } else if target_uri.contains('@') {
+            format!("sip:{}", target_uri)
+        } else {
+            format!("sip:{}@{}", target_uri, self.domain)
+        };
+        let target_uri = &formatted_uri;
         self.remote_uri = Some(target_uri.to_string());
 
         // Find and bind a free RTP port in our range
@@ -206,11 +214,41 @@ impl SipClient {
             let resp2 = self.send(&auth_msg).await?;
             let status2 = utils::parse_status_code(&resp2)?;
 
-            if status2 == 200 {
+            let mut final_status2 = status2;
+            let mut final_resp2 = resp2.clone();
+            let mut final_tag2 = utils::extract_to_tag(&resp2);
+
+            while (100..200).contains(&final_status2) {
+                log::info!(
+                    "Got provisional response {} (auth INVITE) — waiting for final...",
+                    final_status2
+                );
+                final_resp2 = match self.recv_extra(30000).await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        log::error!("Error waiting for final response (auth INVITE): {}", e);
+                        self.remote_uri = None;
+                        return Ok(false);
+                    }
+                };
+                final_status2 = match utils::parse_status_code(&final_resp2) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        log::error!("Error parsing status (auth INVITE): {}", e);
+                        self.remote_uri = None;
+                        return Ok(false);
+                    }
+                };
+                if let Some(t) = utils::extract_to_tag(&final_resp2) {
+                    final_tag2 = Some(t);
+                }
+            }
+
+            if final_status2 == 200 {
                 self.call_id = Some(call_id.clone());
                 self.invite_cseq = Some(auth_cseq);
-                self.remote_tag = utils::extract_to_tag(&resp2);
-                self.remote_rtp_addr = crate::service::watcher::parse_sdp_connection(&resp2);
+                self.remote_tag = final_tag2;
+                self.remote_rtp_addr = crate::service::watcher::parse_sdp_connection(&final_resp2);
                 self.rtp_receiver = Some(receiver);
                 self.in_call = true;
                 self.send_ack(target_uri, &local, &call_id, auth_cseq)
@@ -222,7 +260,7 @@ impl SipClient {
                 return Ok(true);
             }
 
-            log::error!("Auth INVITE failed (status={})", status2);
+            log::error!("Auth INVITE failed (status={})", final_status2);
             // Clean up on auth failure
             self.remote_uri = None;
             return Ok(false);
@@ -495,6 +533,15 @@ impl SipClient {
         let remote_tag = self.remote_tag.as_ref().context("No remote_tag")?;
         let remote_uri = self.remote_uri.as_ref().context("No remote_uri")?;
         let local = self.local_addr_str();
+
+        let formatted_uri = if target_uri.starts_with("sip:") || target_uri.starts_with("sips:") {
+            target_uri.to_string()
+        } else if target_uri.contains('@') {
+            format!("sip:{}", target_uri)
+        } else {
+            format!("sip:{}@{}", target_uri, self.domain)
+        };
+        let target_uri = &formatted_uri;
 
         let msg = crate::sip::transfer::build_refer(
             &self.username,
