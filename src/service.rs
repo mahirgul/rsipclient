@@ -76,6 +76,16 @@ pub(crate) async fn create_managed_client(account: &Account) -> Result<ManagedCl
             server_addr
         );
         (transport, local_addr)
+    } else if transport_type == "tcp" {
+        let bind_addr: SocketAddr = format!("0.0.0.0:{}", account.sip_port).parse()?;
+        let transport = Transport::new_tcp(bind_addr, server_addr).await?;
+        let local_addr = transport.local_addr()?;
+        log::info!(
+            "Account '{}' using TCP transport to {}",
+            account.name,
+            server_addr
+        );
+        (transport, local_addr)
     } else {
         let bind_addr: SocketAddr = format!("0.0.0.0:{}", account.sip_port).parse()?;
         let transport = Transport::new_udp(bind_addr).await?;

@@ -328,6 +328,24 @@
 
                 <div class="form-row">
                     <div class="form-group">
+                        <label for="acc-transport">SIP TRANSPORT PROTOCOL</label>
+                        <select id="acc-transport" class="form-control" style="background: rgba(31, 41, 55, 0.9);">
+                            <option value="udp">UDP (Default)</option>
+                            <option value="tcp">TCP (Plain TCP)</option>
+                            <option value="tls">TLS (SIPS over TLS)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="acc-auth-method">AUTHENTICATION METHOD</label>
+                        <select id="acc-auth-method" class="form-control" style="background: rgba(31, 41, 55, 0.9);">
+                            <option value="md5">MD5 Digest Auth (Default)</option>
+                            <option value="none">None (No Auth Required)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
                         <label for="acc-rtp-start">RTP PORT RANGE START</label>
                         <input type="number" id="acc-rtp-start" class="form-control" min="1024" max="65535" required value="8000">
                     </div>

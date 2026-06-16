@@ -203,6 +203,8 @@ async function openEditAccountModal(name) {
         document.getElementById('acc-codec').value = acc.codec || 'pcmu';
         document.getElementById('acc-rtp-start').value = acc.rtp_port_start;
         document.getElementById('acc-rtp-end').value = acc.rtp_port_end;
+        document.getElementById('acc-transport').value = acc.transport || 'udp';
+        document.getElementById('acc-auth-method').value = acc.auth_method || 'md5';
         document.getElementById('acc-auto-answer').checked = acc.auto_answer || false;
 
         const ivrFields = document.getElementById('ivr-subfields');
@@ -237,6 +239,8 @@ document.getElementById('account-form').addEventListener('submit', async (e) => 
     const domain = document.getElementById('acc-domain').value || undefined;
     const sip_port = parseInt(document.getElementById('acc-sip-port').value);
     const codec = document.getElementById('acc-codec').value;
+    const transport = document.getElementById('acc-transport').value;
+    const auth_method = document.getElementById('acc-auth-method').value;
     const rtp_port_start = parseInt(document.getElementById('acc-rtp-start').value);
     const rtp_port_end = parseInt(document.getElementById('acc-rtp-end').value);
     const auto_answer = document.getElementById('acc-auto-answer').checked;
@@ -244,6 +248,7 @@ document.getElementById('account-form').addEventListener('submit', async (e) => 
 
     const accountData = {
         name, username, password, server, domain, sip_port, codec,
+        transport, auth_method,
         rtp_port_start, rtp_port_end, auto_answer, ivr_welcome
     };
 

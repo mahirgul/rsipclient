@@ -27,11 +27,49 @@ pub fn extract_auth_params(response: &str) -> Option<(String, String)> {
     Some((realm, nonce))
 }
 
+/// Match a SIP header line against a full header name or its compact alias.
+/// Returns the length of the matching prefix if it matches, else None.
+fn match_header_prefix(line: &str, name: &str) -> Option<usize> {
+    let lower_line = line.to_lowercase();
+    let lower_name = name.to_lowercase();
+
+    // Check full name
+    let full_prefix = format!("{}:", lower_name);
+    if lower_line.starts_with(&full_prefix) {
+        return Some(full_prefix.len());
+    }
+
+    // Check compact name alias (RFC 3261 Section 7.3.3)
+    let compact = match lower_name.as_str() {
+        "call-id" => Some("i"),
+        "from" => Some("f"),
+        "to" => Some("t"),
+        "via" => Some("v"),
+        "contact" => Some("m"),
+        "content-type" => Some("c"),
+        "content-length" => Some("l"),
+        "subject" => Some("s"),
+        "supported" => Some("k"),
+        "content-encoding" => Some("e"),
+        "accept-encoding" => Some("a"),
+        _ => None,
+    };
+
+    if let Some(c) = compact {
+        let compact_prefix = format!("{}:", c);
+        if lower_line.starts_with(&compact_prefix) {
+            return Some(compact_prefix.len());
+        }
+    }
+
+    None
+}
+
 /// Extract the `tag` parameter from the To header.
 pub fn extract_to_tag(response: &str) -> Option<String> {
     let to_line = response
         .lines()
-        .find(|l| l.to_lowercase().starts_with("to:"))?;
+        .find(|l| match_header_prefix(l, "to").is_some())?;
     extract_quoted(to_line, "tag=")
 }
 
@@ -58,24 +96,23 @@ pub fn extract_quoted(line: &str, key: &str) -> Option<String> {
 /// Extract the value of a SIP header line (minus the header name).
 /// e.g. `extract_header(msg, "Call-ID")` → "abc123@sip.example.com"
 pub fn extract_header(msg: &str, header_name: &str) -> String {
-    let prefix = format!("{}:", header_name);
-    msg.lines()
-        .find(|l| l.to_lowercase().starts_with(&prefix.to_lowercase()))
-        .map(|l| l[prefix.len()..].trim().to_string())
-        .unwrap_or_default()
+    for line in msg.lines() {
+        if let Some(prefix_len) = match_header_prefix(line, header_name) {
+            return line[prefix_len..].trim().to_string();
+        }
+    }
+    String::new()
 }
 
 /// Extract a named parameter from a SIP header line.
 /// e.g. `extract_param(msg, "From", "tag")` → "abc123"
 pub fn extract_param(msg: &str, header_name: &str, param: &str) -> String {
-    let prefix = format!("{}:", header_name);
-    let line = msg
-        .lines()
-        .find(|l| l.to_lowercase().starts_with(&prefix.to_lowercase()));
-    match line {
-        Some(l) => extract_quoted(l, &format!("{}=", param)).unwrap_or_default(),
-        None => String::new(),
+    for line in msg.lines() {
+        if match_header_prefix(line, header_name).is_some() {
+            return extract_quoted(line, &format!("{}=", param)).unwrap_or_default();
+        }
     }
+    String::new()
 }
 
 /// Generate a short random ID with a prefix (e.g. "tag-a1b2c3d4")
@@ -105,9 +142,11 @@ pub fn extract_uri(header: &str) -> Option<String> {
 
 /// Extract all lines of a specific header name, returned as a vector of full header lines (e.g. `["Via: ...", "Via: ..."]`)
 pub fn extract_headers_raw(msg: &str, header_name: &str) -> Vec<String> {
-    let prefix = format!("{}:", header_name).to_lowercase();
-    msg.lines()
-        .filter(|l| l.to_lowercase().starts_with(&prefix))
-        .map(|l| l.trim().to_string())
-        .collect()
+    let mut res = Vec::new();
+    for line in msg.lines() {
+        if match_header_prefix(line, header_name).is_some() {
+            res.push(line.trim().to_string());
+        }
+    }
+    res
 }
