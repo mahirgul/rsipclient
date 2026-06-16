@@ -86,6 +86,9 @@ async function updateDashboard() {
         document.getElementById('diag-mem').innerText = `${(status.memory_bytes / (1024 * 1024)).toFixed(1)} MB`;
         document.getElementById('diag-cpu').innerText = `${status.cpu_percent.toFixed(1)} %`;
         document.getElementById('uptime').innerText = `Uptime: ${formatDuration(status.uptime_secs)}`;
+        if (status.config_path) {
+            document.getElementById('diag-config-path').innerText = status.config_path;
+        }
 
         if (status.app_version) {
             document.getElementById('app-version').innerText = `v${status.app_version}`;

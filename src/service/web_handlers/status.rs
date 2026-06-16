@@ -104,6 +104,7 @@ pub async fn get_status(
         active_calls,
         accounts,
         app_version: env!("CARGO_PKG_VERSION").to_string(),
+        config_path: state.config_path.clone(),
     }))
 }
 
