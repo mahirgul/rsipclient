@@ -712,3 +712,24 @@ tr:last-child td {
     from { transform: scaleX(1); }
     to { transform: scaleX(0); }
 }
+
+footer.app-footer {
+    text-align: center;
+    padding: 1.5rem;
+    margin-top: 2rem;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    background: rgba(10, 12, 18, 0.3);
+    border-radius: 0 0 12px 12px;
+}
+
+footer.app-footer a {
+    color: var(--accent-primary);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+footer.app-footer a:hover {
+    text-decoration: underline;
+}

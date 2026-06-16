@@ -89,6 +89,10 @@ async function updateDashboard() {
 
         if (status.app_version) {
             document.getElementById('app-version').innerText = `v${status.app_version}`;
+            const footerVer = document.getElementById('footer-version');
+            if (footerVer) {
+                footerVer.innerText = `v${status.app_version}`;
+            }
         }
 
         // Build SIP Bindings Table (Dashboard tab)
