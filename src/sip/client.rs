@@ -103,6 +103,15 @@ impl SipClient {
         format!("{}:{}", self.local_addr.ip(), self.local_addr.port())
     }
 
+    /// Send NAT keep-alive packet (double CRLF)
+    pub async fn send_keepalive(&self) -> Result<()> {
+        log::debug!("Sending NAT keep-alive (double CRLF)...");
+        self.transport
+            .send_to(b"\r\n\r\n", self.server_addr)
+            .await?;
+        Ok(())
+    }
+
     pub(crate) async fn send(&self, msg: &str) -> Result<String> {
         log::debug!("--- SEND ---\n{}", msg);
         self.transport

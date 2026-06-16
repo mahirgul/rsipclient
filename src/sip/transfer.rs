@@ -15,22 +15,29 @@ pub fn build_refer(
     cseq: u32,
     branch: &str,
     settings: &SipSettings,
+    via_transport: &str,
 ) -> String {
     let from = settings.format_from(username, domain);
+    let scheme = if via_transport.to_uppercase() == "TLS" {
+        "sips"
+    } else {
+        "sip"
+    };
 
     format!(
         "REFER {} SIP/2.0\r\n\
-         Via: SIP/2.0/UDP {};branch={}\r\n\
+         Via: SIP/2.0/{} {};branch={}\r\n\
          Max-Forwards: 70\r\n\
          From: {};tag={}\r\n\
          To: <{}>;tag={}\r\n\
          Call-ID: {}\r\n\
          CSeq: {} REFER\r\n\
-         Contact: <sip:{}@{}>\r\n\
+         Contact: <{}:{}@{}>\r\n\
          Refer-To: <{}>\r\n\
          Content-Length: 0\r\n\
          \r\n",
         remote_uri,
+        via_transport.to_uppercase(),
         local_addr,
         branch,
         from,
@@ -39,6 +46,7 @@ pub fn build_refer(
         remote_tag,
         call_id,
         cseq,
+        scheme,
         username,
         local_addr,
         refer_to,
@@ -61,9 +69,15 @@ pub fn build_hold(
     settings: &SipSettings,
     resume: bool,
     codec: &str,
+    via_transport: &str,
 ) -> String {
     let from = settings.format_from(username, domain);
     let direction = if resume { "sendrecv" } else { "sendonly" };
+    let scheme = if via_transport.to_uppercase() == "TLS" {
+        "sips"
+    } else {
+        "sip"
+    };
 
     // Build codec-specific SDP rtpmap lines
     let (payload_type, rtpmap_line) = match codec {
@@ -88,18 +102,19 @@ pub fn build_hold(
 
     format!(
         "INVITE {} SIP/2.0\r\n\
-         Via: SIP/2.0/UDP {};branch={}\r\n\
+         Via: SIP/2.0/{} {};branch={}\r\n\
          Max-Forwards: 70\r\n\
          From: {};tag={}\r\n\
          To: <{}>;tag={}\r\n\
          Call-ID: {}\r\n\
          CSeq: {} INVITE\r\n\
-         Contact: <sip:{}@{}>\r\n\
+         Contact: <{}:{}@{}>\r\n\
          Content-Type: application/sdp\r\n\
          Content-Length: {}\r\n\
          \r\n\
          {}",
         remote_uri,
+        via_transport.to_uppercase(),
         local_addr,
         branch,
         from,
@@ -108,6 +123,7 @@ pub fn build_hold(
         remote_tag,
         call_id,
         cseq,
+        scheme,
         username,
         local_addr,
         sdp_len,

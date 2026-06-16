@@ -32,35 +32,49 @@ impl UdpTransport {
 
     pub async fn recv_timeout(&self, timeout_ms: u64) -> Result<Vec<u8>> {
         let mut buf = vec![0u8; 65535];
-        let result = tokio::time::timeout(
-            std::time::Duration::from_millis(timeout_ms),
-            self.socket.recv_from(&mut buf),
-        )
-        .await
-        .context("Receive timed out")?
-        .context("Failed to receive UDP packet")?;
+        loop {
+            let result = tokio::time::timeout(
+                std::time::Duration::from_millis(timeout_ms),
+                self.socket.recv_from(&mut buf),
+            )
+            .await
+            .context("Receive timed out")?
+            .context("Failed to receive UDP packet")?;
 
-        let (n, _src) = result;
-        buf.truncate(n);
-        Ok(buf)
+            let (n, _src) = result;
+            let is_crlf_only = buf[..n].iter().all(|&b| b == b'\r' || b == b'\n');
+            if is_crlf_only {
+                log::debug!("Received UDP keep-alive/CRLF packet, ignoring.");
+                continue;
+            }
+            buf.truncate(n);
+            return Ok(buf);
+        }
     }
 
     /// Try to receive a packet with a short timeout (non-blocking).
     /// Returns None if nothing arrived within `timeout_ms`.
     pub async fn try_recv(&self, timeout_ms: u64) -> Option<Vec<u8>> {
         let mut buf = vec![0u8; 65535];
-        let result = tokio::time::timeout(
-            std::time::Duration::from_millis(timeout_ms),
-            self.socket.recv_from(&mut buf),
-        )
-        .await;
+        loop {
+            let result = tokio::time::timeout(
+                std::time::Duration::from_millis(timeout_ms),
+                self.socket.recv_from(&mut buf),
+            )
+            .await;
 
-        match result {
-            Ok(Ok((n, _src))) => {
-                buf.truncate(n);
-                Some(buf)
+            match result {
+                Ok(Ok((n, _src))) => {
+                    let is_crlf_only = buf[..n].iter().all(|&b| b == b'\r' || b == b'\n');
+                    if is_crlf_only {
+                        log::debug!("Received UDP keep-alive/CRLF packet in try_recv, ignoring.");
+                        continue;
+                    }
+                    buf.truncate(n);
+                    return Some(buf);
+                }
+                _ => return None,
             }
-            _ => None,
         }
     }
 
@@ -332,6 +346,20 @@ fn parse_content_length(headers: &str) -> Option<usize> {
 
 /// Try to extract a complete SIP message from the buffer.
 fn extract_sip_message(buf: &mut Vec<u8>) -> Option<Vec<u8>> {
+    // Discard any leading CRLF/LF/CR keep-alive bytes
+    let non_crlf_pos = buf.iter().position(|&b| b != b'\r' && b != b'\n');
+    match non_crlf_pos {
+        Some(0) => {}
+        Some(pos) => {
+            buf.drain(..pos);
+        }
+        None => {
+            // Buffer contains only CRLF bytes, clear it
+            buf.clear();
+            return None;
+        }
+    }
+
     let header_end = find_subsequence(buf, b"\r\n\r\n")? + 4;
 
     let headers = std::str::from_utf8(&buf[..header_end]).ok()?;
@@ -410,6 +438,14 @@ impl Transport {
             Transport::Udp(udp) => udp.local_addr(),
             Transport::Tcp(tcp) => tcp.local_addr(),
             Transport::Tls(tls) => tls.local_addr(),
+        }
+    }
+
+    pub fn via_str(&self) -> &'static str {
+        match self {
+            Transport::Udp(_) => "UDP",
+            Transport::Tcp(_) => "TCP",
+            Transport::Tls(_) => "TLS",
         }
     }
 }

@@ -29,6 +29,7 @@ impl SipClient {
             &call_id,
             cseq,
             &self.settings,
+            self.transport.via_str(),
         );
 
         let resp = self.send(&msg).await?;
@@ -51,6 +52,7 @@ impl SipClient {
                 &realm,
                 &nonce,
                 &self.settings,
+                self.transport.via_str(),
             );
 
             let resp2 = self.send(&auth_msg).await?;
@@ -96,6 +98,7 @@ impl SipClient {
             &call_id,
             cseq,
             &settings,
+            self.transport.via_str(),
         );
 
         let resp = self.send(&msg).await?;
@@ -118,6 +121,7 @@ impl SipClient {
                 &realm,
                 &nonce,
                 &settings,
+                self.transport.via_str(),
             );
 
             let resp2 = self.send(&auth_msg).await?;
@@ -183,6 +187,7 @@ impl SipClient {
             cseq,
             &sdp_body,
             &self.settings,
+            self.transport.via_str(),
         );
 
         let resp = self.send(&msg).await?;
@@ -209,6 +214,7 @@ impl SipClient {
                 &realm,
                 &nonce,
                 &self.settings,
+                self.transport.via_str(),
             );
 
             let resp2 = self.send(&auth_msg).await?;
@@ -343,6 +349,7 @@ impl SipClient {
             cseq,
             &self.new_branch(),
             &self.settings,
+            self.transport.via_str(),
         );
         self.transport
             .send_to(ack.as_bytes(), self.server_addr)
@@ -375,6 +382,7 @@ impl SipClient {
             self.next_cseq().await,
             &self.new_branch(),
             &self.settings,
+            self.transport.via_str(),
         );
 
         let resp = self.send(&msg).await?;
@@ -424,6 +432,7 @@ impl SipClient {
             invite_cseq,
             &self.new_branch(),
             &self.settings,
+            self.transport.via_str(),
         );
 
         let resp = self.send(&msg).await?;
@@ -473,6 +482,7 @@ impl SipClient {
             &self.settings,
             false, // resume = false
             &self.codec,
+            self.transport.via_str(),
         );
 
         let resp = self.send(&msg).await?;
@@ -511,6 +521,7 @@ impl SipClient {
             &self.settings,
             true, // resume = true
             &self.codec,
+            self.transport.via_str(),
         );
 
         let resp = self.send(&msg).await?;
@@ -555,6 +566,7 @@ impl SipClient {
             self.next_cseq().await,
             &self.new_branch(),
             &self.settings,
+            self.transport.via_str(),
         );
 
         let resp = self.send(&msg).await?;

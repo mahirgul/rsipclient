@@ -319,6 +319,7 @@ pub async fn registration_watcher(
     shutdown: Arc<Mutex<bool>>,
 ) {
     let mut last_register_time: Option<std::time::Instant> = None;
+    let mut last_keepalive_time: Option<std::time::Instant> = None;
     let mut is_currently_registered = false;
 
     loop {
@@ -408,6 +409,22 @@ pub async fn registration_watcher(
                 is_currently_registered = false;
                 last_register_time = None;
             }
+        }
+
+        // NAT Keep-alive logic: send double CRLF every 20 seconds when registered
+        if is_currently_registered {
+            let now = std::time::Instant::now();
+            let need_keepalive = match last_keepalive_time {
+                None => true,
+                Some(t) => now.duration_since(t) >= std::time::Duration::from_secs(20),
+            };
+            if need_keepalive {
+                let c = client.lock().await;
+                let _ = c.send_keepalive().await;
+                last_keepalive_time = Some(now);
+            }
+        } else {
+            last_keepalive_time = None;
         }
 
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
