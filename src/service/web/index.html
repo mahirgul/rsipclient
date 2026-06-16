@@ -280,7 +280,7 @@
         <!-- ── APP FOOTER ── -->
         <footer class="app-footer">
             <div>
-                SIP Engine Client is running on <span id="footer-version" style="font-weight: 600;">v1.0.1</span>.
+                SIP Engine Client is running on <span id="footer-version" style="font-weight: 600;">v1.0.3</span>.
                 View the project and latest releases on <a href="https://github.com/mahirgul/rsipclient" target="_blank">GitHub</a>.
             </div>
         </footer>
@@ -376,6 +376,50 @@
                     <div class="form-group">
                         <label for="acc-ivr-welcome">IVR WELCOME AUDIO FILE (.wav format)</label>
                         <input type="text" id="acc-ivr-welcome" class="form-control" placeholder="e.g. welcome.wav">
+                    </div>
+                    <div class="form-group">
+                        <label for="acc-ivr-timeout">IVR DIGIT TIMEOUT (seconds)</label>
+                        <input type="number" id="acc-ivr-timeout" class="form-control" min="1" max="120" value="10">
+                    </div>
+                </div>
+
+                <h4 style="margin: 1.5rem 0 0.5rem 0; font-size: 0.85rem; letter-spacing: 0.5px; color: var(--text-secondary); text-transform: uppercase;">Advanced Options</h4>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="acc-display-name">DISPLAY NAME (Header From)</label>
+                        <input type="text" id="acc-display-name" class="form-control" placeholder="e.g. John Doe">
+                    </div>
+                    <div class="form-group">
+                        <label for="acc-user-agent">CUSTOM USER-AGENT</label>
+                        <input type="text" id="acc-user-agent" class="form-control" placeholder="e.g. CustomSIP/1.0">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="acc-register-expiry">REGISTRATION EXPIRY (seconds)</label>
+                        <input type="number" id="acc-register-expiry" class="form-control" min="10" max="86400" value="3600">
+                    </div>
+                    <div class="form-group">
+                        <label for="acc-register-retry">REGISTRATION RETRY INTERVAL (seconds)</label>
+                        <input type="number" id="acc-register-retry" class="form-control" min="5" max="3600" value="30">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="acc-proxy">OUTBOUND PROXY (Host:Port)</label>
+                    <input type="text" id="acc-proxy" class="form-control" placeholder="e.g. 192.168.1.254:5060">
+                </div>
+
+                <div class="checkbox-row" style="display: flex; gap: 2rem; margin-bottom: 1.5rem;">
+                    <div class="checkbox-group" style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+                        <input type="checkbox" id="acc-early-media" style="cursor: pointer;">
+                        <label for="acc-early-media" style="font-weight: 500; cursor: pointer; margin: 0;">Enable Early Media</label>
+                    </div>
+                    <div class="checkbox-group" style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+                        <input type="checkbox" id="acc-session-timers" style="cursor: pointer;">
+                        <label for="acc-session-timers" style="font-weight: 500; cursor: pointer; margin: 0;">Enable Session Timers</label>
                     </div>
                 </div>
 

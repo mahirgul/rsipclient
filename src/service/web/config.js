@@ -182,6 +182,17 @@ function openAddAccountModal() {
     document.getElementById('modal-mode-title').innerText = 'Add SIP Account';
     document.getElementById('acc-name').disabled = false;
     document.getElementById('ivr-subfields').style.display = 'none';
+
+    // Reset advanced options to default values
+    document.getElementById('acc-ivr-timeout').value = 10;
+    document.getElementById('acc-display-name').value = '';
+    document.getElementById('acc-user-agent').value = '';
+    document.getElementById('acc-register-expiry').value = 3600;
+    document.getElementById('acc-register-retry').value = 30;
+    document.getElementById('acc-proxy').value = '';
+    document.getElementById('acc-early-media').checked = true;
+    document.getElementById('acc-session-timers').checked = false;
+
     document.getElementById('account-modal').classList.add('active');
 }
 
@@ -211,9 +222,21 @@ async function openEditAccountModal(name) {
         if (acc.auto_answer) {
             ivrFields.style.display = 'block';
             document.getElementById('acc-ivr-welcome').value = acc.ivr_welcome || '';
+            document.getElementById('acc-ivr-timeout').value = acc.ivr_timeout !== undefined ? acc.ivr_timeout : 10;
         } else {
             ivrFields.style.display = 'none';
+            document.getElementById('acc-ivr-welcome').value = '';
+            document.getElementById('acc-ivr-timeout').value = 10;
         }
+
+        // Load advanced options
+        document.getElementById('acc-display-name').value = acc.display_name || '';
+        document.getElementById('acc-user-agent').value = acc.user_agent || '';
+        document.getElementById('acc-register-expiry').value = acc.register_expiry !== undefined ? acc.register_expiry : 3600;
+        document.getElementById('acc-register-retry').value = acc.register_retry_interval !== undefined ? acc.register_retry_interval : 30;
+        document.getElementById('acc-proxy').value = acc.proxy || '';
+        document.getElementById('acc-early-media').checked = acc.early_media !== undefined ? acc.early_media : true;
+        document.getElementById('acc-session-timers').checked = acc.session_timers !== undefined ? acc.session_timers : false;
 
         document.getElementById('modal-mode-title').innerText = 'Edit SIP Account';
         document.getElementById('account-modal').classList.add('active');
@@ -246,10 +269,22 @@ document.getElementById('account-form').addEventListener('submit', async (e) => 
     const auto_answer = document.getElementById('acc-auto-answer').checked;
     const ivr_welcome = auto_answer ? (document.getElementById('acc-ivr-welcome').value || undefined) : undefined;
 
+    // Advanced & IVR fields
+    const ivr_timeout = auto_answer ? parseInt(document.getElementById('acc-ivr-timeout').value) : undefined;
+    const display_name = document.getElementById('acc-display-name').value || undefined;
+    const user_agent = document.getElementById('acc-user-agent').value || undefined;
+    const register_expiry = parseInt(document.getElementById('acc-register-expiry').value);
+    const register_retry_interval = parseInt(document.getElementById('acc-register-retry').value);
+    const proxy = document.getElementById('acc-proxy').value || undefined;
+    const early_media = document.getElementById('acc-early-media').checked;
+    const session_timers = document.getElementById('acc-session-timers').checked;
+
     const accountData = {
         name, username, password, server, domain, sip_port, codec,
         transport, auth_method,
-        rtp_port_start, rtp_port_end, auto_answer, ivr_welcome
+        rtp_port_start, rtp_port_end, auto_answer, ivr_welcome,
+        ivr_timeout, display_name, user_agent, register_expiry,
+        register_retry_interval, proxy, early_media, session_timers
     };
 
     const url = isEdit ? `${API_URL}/api/accounts/${originalName}` : `${API_URL}/api/accounts`;
