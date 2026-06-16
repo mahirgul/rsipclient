@@ -37,11 +37,22 @@ impl UdpTransport {
                 std::time::Duration::from_millis(timeout_ms),
                 self.socket.recv_from(&mut buf),
             )
-            .await
-            .context("Receive timed out")?
-            .context("Failed to receive UDP packet")?;
+            .await;
 
-            let (n, _src) = result;
+            let result = match result {
+                Ok(res) => res,
+                Err(_) => anyhow::bail!("Receive timed out"),
+            };
+
+            let (n, _src) = match result {
+                Ok(val) => val,
+                Err(ref e) if e.kind() == std::io::ErrorKind::ConnectionReset => {
+                    log::debug!("Ignoring Windows UDP ConnectionReset error (WSAECONNRESET)");
+                    continue;
+                }
+                Err(e) => anyhow::bail!("Failed to receive UDP packet: {}", e),
+            };
+
             let is_crlf_only = buf[..n].iter().all(|&b| b == b'\r' || b == b'\n');
             if is_crlf_only {
                 log::debug!("Received UDP keep-alive/CRLF packet, ignoring.");
@@ -72,6 +83,10 @@ impl UdpTransport {
                     }
                     buf.truncate(n);
                     return Some(buf);
+                }
+                Ok(Err(ref e)) if e.kind() == std::io::ErrorKind::ConnectionReset => {
+                    log::debug!("Ignoring Windows UDP ConnectionReset error in try_recv");
+                    continue;
                 }
                 _ => return None,
             }

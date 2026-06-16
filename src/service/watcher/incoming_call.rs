@@ -29,7 +29,7 @@ pub async fn incoming_call_watcher(
         // Poll for incoming SIP message
         let msg = {
             let c = client.lock().await;
-            c.try_recv(200).await
+            c.try_recv(50).await
         };
 
         let msg = match msg {
@@ -217,7 +217,7 @@ pub async fn incoming_call_watcher(
             // Poll for incoming SIP messages (like BYE)
             let msg = {
                 let c = client.lock().await;
-                c.try_recv(200).await
+                c.try_recv(50).await
             };
 
             if let Some(m) = msg {
