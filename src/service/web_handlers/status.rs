@@ -103,6 +103,7 @@ pub async fn get_status(
         registered_accounts,
         active_calls,
         accounts,
+        app_version: env!("CARGO_PKG_VERSION").to_string(),
     }))
 }
 

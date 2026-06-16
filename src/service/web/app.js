@@ -87,6 +87,10 @@ async function updateDashboard() {
         document.getElementById('diag-cpu').innerText = `${status.cpu_percent.toFixed(1)} %`;
         document.getElementById('uptime').innerText = `Uptime: ${formatDuration(status.uptime_secs)}`;
 
+        if (status.app_version) {
+            document.getElementById('app-version').innerText = `v${status.app_version}`;
+        }
+
         // Build SIP Bindings Table (Dashboard tab)
         const bindingsBody = document.getElementById('bindings-monitor-body');
         bindingsBody.innerHTML = '';

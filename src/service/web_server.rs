@@ -34,6 +34,7 @@ pub struct StatusResponse {
     pub registered_accounts: usize,
     pub active_calls: usize,
     pub accounts: Vec<AccountStatus>,
+    pub app_version: String,
 }
 
 #[derive(serde::Serialize)]
