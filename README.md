@@ -133,6 +133,12 @@ sip-client -c config.toml service
 
 Then visit the Web Dashboard at `http://localhost:8080` to manage registrations, make calls, monitor status, and view real-time log streaming.
 
+### Dashboard UX & Notification Enhancements
+
+* **Inline Toast Notifications:** All alerts, success confirmations, and error statuses appear as non-blocking, modern in-page toast notifications (using glassmorphism styling, clean SVG iconography, and automatic layout collapsing when dismissed).
+* **Pause-on-Hover:** Hovering over a toast freezes the auto-close timer and progress bar animation, resuming automatically when the mouse leaves.
+* **Direct Call Workflows:** Traditional browser-blocking `confirm()` dialogs for call actions (hang up, blind transfer) and configuration actions (deleting accounts) have been removed for a fast, direct one-click operation.
+
 ### REST API Reference
 
 All requests must include the `Authorization: Bearer <session_token>` header (except `/api/login`).
