@@ -1,12 +1,26 @@
 # rsipclient — Rust SIP Client & IVR Engine
 
 <p align="center">
+  <a href="https://github.com/mahirgul/rsipclient/actions/workflows/ci.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/mahirgul/rsipclient/ci.yml?branch=master&style=for-the-badge&logo=github-actions&logoColor=white&label=CI&color=2ea44f" alt="CI Status">
+  </a>
+  <img src="https://img.shields.io/badge/Release-v2.0.4-blue?style=for-the-badge&logo=git&logoColor=white" alt="Release v2.0.4">
+  <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License">
+  <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey?style=for-the-badge" alt="Windows, Linux & macOS">
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/Rust-1.75%2B-orange?style=for-the-badge&logo=rust&logoColor=white" alt="Rust 1.75+">
   <img src="https://img.shields.io/badge/Axum-0.7%2B-009688?style=for-the-badge&logo=rust&logoColor=white" alt="Axum 0.7+">
   <img src="https://img.shields.io/badge/Tokio-1.35%2B-EE4C2C?style=for-the-badge&logo=rust&logoColor=white" alt="Tokio 1.35+">
   <img src="https://img.shields.io/badge/Web%20Audio-JS-FFD21E?style=for-the-badge&logo=javascript&logoColor=black" alt="JS Web Audio">
-  <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License">
-  <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey?style=for-the-badge" alt="Windows, Linux & macOS">
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Protocol-SIP%20%2F%20SDP-blueviolet?style=for-the-badge" alt="SIP / SDP Protocol">
+  <img src="https://img.shields.io/badge/Media-RTP%20%2F%20RTCP-ff69b4?style=for-the-badge" alt="RTP / RTCP Media">
+  <img src="https://img.shields.io/badge/Softphone-WebSockets-33a3ff?style=for-the-badge&logo=socket.io&logoColor=white" alt="WebSocket Softphone">
+  <img src="https://img.shields.io/badge/IVR-DTMF%20Attendant-red?style=for-the-badge" alt="IVR DTMF Attendant">
 </p>
 
 > [!IMPORTANT]
