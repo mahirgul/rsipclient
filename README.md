@@ -1,10 +1,20 @@
 # rsipclient — Rust SIP Client & IVR Engine
 
-[![CI](https://github.com/mahirgul/rsipclient/actions/workflows/ci.yml/badge.svg)](https://github.com/mahirgul/rsipclient/actions/workflows/ci.yml)
-[![Crates.io](https://img.shields.io/crates/v/sip-client.svg)](https://crates.io/crates/sip-client)
-[![Docs.rs](https://docs.rs/sip-client/badge.svg)](https://docs.rs/sip-client)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-stable%201.70%2B-orange.svg)](https://rust-lang.org)
+<p align="center">
+  <a href="https://github.com/mahirgul/rsipclient/actions/workflows/ci.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/mahirgul/rsipclient/ci.yml?branch=master&style=for-the-badge&logo=github-actions&logoColor=white&label=CI" alt="CI Status">
+  </a>
+  <a href="https://crates.io/crates/sip-client">
+    <img src="https://img.shields.io/crates/v/sip-client?style=for-the-badge&logo=rust&logoColor=white&color=FC8D62" alt="Crates.io">
+  </a>
+  <a href="https://docs.rs/sip-client">
+    <img src="https://img.shields.io/badge/docs.rs-sip--client-blue?style=for-the-badge&logo=docs.rs&logoColor=white" alt="Docs.rs">
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License">
+  </a>
+  <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey?style=for-the-badge" alt="Platform: Windows, Linux, macOS">
+</p>
 
 **A multi-account SIP client with a built-in modern Web Dashboard, REST API, and IVR Engine, written in pure async Rust.**
 
