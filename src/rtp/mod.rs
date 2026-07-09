@@ -12,8 +12,37 @@ pub mod wav;
 use anyhow::Result;
 use codec::Codec;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use tokio::net::UdpSocket;
 // Re-exports are available via rtp::codec::* and rtp::wav::* directly.
+
+/// Helper function to play a WAV file asynchronously over RTP.
+pub async fn play_wav_file(
+    file_path: &str,
+    socket_opt: Option<Arc<UdpSocket>>,
+    target: SocketAddr,
+    codec: Codec,
+    rtp_port: u16,
+) -> Result<(usize, u32)> {
+    let data = tokio::fs::read(file_path).await?;
+    let (info, samples) = crate::rtp::wav::parse_wav(&data)?;
+    let sample_count = samples.len();
+    let sample_rate = info.sample_rate;
+
+    tokio::spawn(async move {
+        let res = if let Some(socket) = socket_opt {
+            send_wav_rtp_on_socket(&socket, &samples, sample_rate, target, codec).await
+        } else {
+            send_wav_rtp(&samples, sample_rate, target, 0, rtp_port, codec).await
+        };
+        match res {
+            Ok(n) => log::info!("Sent {} RTP packets (codec={:?})", n, codec),
+            Err(e) => log::error!("RTP send error: {}", e),
+        }
+    });
+
+    Ok((sample_count, sample_rate))
+}
 
 // ── RTP sender ──────────────────────────────────────────────
 

@@ -213,42 +213,14 @@ pub async fn play_account(
     let socket_opt = client.rtp_receiver.as_ref().map(|r| r.socket());
     drop(client);
 
-    match tokio::fs::read(&payload.file).await {
-        Ok(data) => match crate::rtp::wav::parse_wav(&data) {
-            Ok((info, samples)) => {
-                let sample_rate = info.sample_rate;
-                tokio::spawn(async move {
-                    let res = if let Some(socket) = socket_opt {
-                        crate::rtp::send_wav_rtp_on_socket(
-                            &socket,
-                            &samples,
-                            sample_rate,
-                            target,
-                            codec,
-                        )
-                        .await
-                    } else {
-                        crate::rtp::send_wav_rtp(&samples, sample_rate, target, 0, rtp_port, codec)
-                            .await
-                    };
-                    match res {
-                        Ok(n) => log::info!("Sent {} RTP packets (codec={:?})", n, codec),
-                        Err(e) => log::error!("RTP send error: {}", e),
-                    }
-                });
-                Ok(Json(serde_json::json!({
-                    "success": true,
-                    "msg": format!("Started playing '{}'", payload.file)
-                })))
-            }
-            Err(e) => Ok(Json(serde_json::json!({
-                "success": false,
-                "msg": format!("WAV parse error: {}", e)
-            }))),
-        },
+    match crate::rtp::play_wav_file(&payload.file, socket_opt, target, codec, rtp_port).await {
+        Ok(_) => Ok(Json(serde_json::json!({
+            "success": true,
+            "msg": format!("Started playing '{}'", payload.file)
+        }))),
         Err(e) => Ok(Json(serde_json::json!({
             "success": false,
-            "msg": format!("Cannot read file '{}': {}", payload.file, e)
+            "msg": format!("Play WAV error: {}", e)
         }))),
     }
 }

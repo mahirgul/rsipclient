@@ -50,51 +50,12 @@ pub async fn add_account(
         StatusCode::BAD_REQUEST
     })?;
 
-    // Spawn call watcher if auto-answer
-    if mc.account.auto_answer.unwrap_or(false) {
-        let client = mc.client.clone();
-        let codec = mc.codec;
-        let account = mc.account.clone();
-        let shutdown = state.global_shutdown.clone();
-        let active = mc.active.clone();
-        let audio_tx = mc.audio_tx.clone();
-        let account_name = new_acc.name.clone();
-        tokio::spawn(async move {
-            super::super::incoming_call_watcher(
-                account_name,
-                client,
-                codec,
-                account,
-                shutdown,
-                active,
-                audio_tx,
-            )
-            .await;
-        });
-    }
-
-    // Spawn registration watcher
-    {
-        let client = mc.client.clone();
-        let active = mc.active.clone();
-        let should_register = mc.should_register.clone();
-        let register_expiry = mc.account.register_expiry.unwrap_or(3600);
-        let retry_interval = mc.account.register_retry_interval.unwrap_or(30);
-        let shutdown = state.global_shutdown.clone();
-        let account_name = new_acc.name.clone();
-        tokio::spawn(async move {
-            super::super::registration_watcher(
-                account_name,
-                client,
-                active,
-                should_register,
-                register_expiry,
-                retry_interval,
-                shutdown,
-            )
-            .await;
-        });
-    }
+    // Spawn background watchers
+    super::super::spawn_watchers_for_client(
+        new_acc.name.clone(),
+        &mc,
+        state.global_shutdown.clone(),
+    );
 
     cls.insert(new_acc.name.clone(), mc);
     Ok(Json(serde_json::json!({ "success": true })))
@@ -145,51 +106,12 @@ pub async fn edit_account(
         StatusCode::BAD_REQUEST
     })?;
 
-    // Spawn call watcher if auto-answer
-    if mc.account.auto_answer.unwrap_or(false) {
-        let client = mc.client.clone();
-        let codec = mc.codec;
-        let account = mc.account.clone();
-        let shutdown = state.global_shutdown.clone();
-        let active = mc.active.clone();
-        let audio_tx = mc.audio_tx.clone();
-        let account_name = updated_acc.name.clone();
-        tokio::spawn(async move {
-            super::super::incoming_call_watcher(
-                account_name,
-                client,
-                codec,
-                account,
-                shutdown,
-                active,
-                audio_tx,
-            )
-            .await;
-        });
-    }
-
-    // Spawn registration watcher
-    {
-        let client = mc.client.clone();
-        let active = mc.active.clone();
-        let should_register = mc.should_register.clone();
-        let register_expiry = mc.account.register_expiry.unwrap_or(3600);
-        let retry_interval = mc.account.register_retry_interval.unwrap_or(30);
-        let shutdown = state.global_shutdown.clone();
-        let account_name = updated_acc.name.clone();
-        tokio::spawn(async move {
-            super::super::registration_watcher(
-                account_name,
-                client,
-                active,
-                should_register,
-                register_expiry,
-                retry_interval,
-                shutdown,
-            )
-            .await;
-        });
-    }
+    // Spawn background watchers
+    super::super::spawn_watchers_for_client(
+        updated_acc.name.clone(),
+        &mc,
+        state.global_shutdown.clone(),
+    );
 
     // Insert new (handles renaming)
     cls.insert(updated_acc.name.clone(), mc);

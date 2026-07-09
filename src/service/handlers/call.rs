@@ -113,39 +113,12 @@ pub async fn handle_play(req: &Request, clients: &HashMap<String, ManagedClient>
     let socket_opt = client.rtp_receiver.as_ref().map(|r| r.socket());
     drop(client);
 
-    match tokio::fs::read(&wav_path).await {
-        Ok(data) => match crate::rtp::wav::parse_wav(&data) {
-            Ok((info, samples)) => {
-                let sample_count = samples.len();
-                let sample_rate = info.sample_rate;
-
-                tokio::spawn(async move {
-                    let res = if let Some(socket) = socket_opt {
-                        crate::rtp::send_wav_rtp_on_socket(
-                            &socket,
-                            &samples,
-                            sample_rate,
-                            target,
-                            codec,
-                        )
-                        .await
-                    } else {
-                        crate::rtp::send_wav_rtp(&samples, sample_rate, target, 0, rtp_port, codec)
-                            .await
-                    };
-                    match res {
-                        Ok(n) => log::info!("Sent {} RTP packets (codec={:?})", n, codec),
-                        Err(e) => log::error!("RTP send error: {}", e),
-                    }
-                });
-                Response::ok(&format!(
-                    "Playing '{}' ({} samples, {}Hz, codec={:?}) to '{}'",
-                    wav_path, sample_count, sample_rate, codec, account_name
-                ))
-            }
-            Err(e) => Response::fail(&format!("WAV parse error: {}", e)),
-        },
-        Err(e) => Response::fail(&format!("Cannot read file '{}': {}", wav_path, e)),
+    match crate::rtp::play_wav_file(&wav_path, socket_opt, target, codec, rtp_port).await {
+        Ok((sample_count, sample_rate)) => Response::ok(&format!(
+            "Playing '{}' ({} samples, {}Hz, codec={:?}) to '{}'",
+            wav_path, sample_count, sample_rate, codec, account_name
+        )),
+        Err(e) => Response::fail(&format!("Play WAV error: {}", e)),
     }
 }
 

@@ -6,35 +6,22 @@
 pub(crate) mod commands_server;
 mod handlers;
 pub(crate) mod logger;
+pub(crate) mod managed_client;
 pub(crate) mod watcher;
 pub(crate) mod web_handlers;
 pub(crate) mod web_server;
 
+pub(crate) use managed_client::{create_managed_client, spawn_watchers_for_client, ManagedClient};
 pub(crate) use watcher::{incoming_call_watcher, registration_watcher};
 
-use crate::config::{Account, Config};
+use crate::config::Config;
 use crate::ipc::{Request, Response};
-use crate::rtp::codec::Codec;
-use crate::sip::transport::Transport;
-use crate::sip::{AuthMethod, SipClient, SipSettings};
 use anyhow::{Context, Result};
 use std::collections::HashMap;
-use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
-
-/// Wrapper for a managed SIP client (one per account)
-#[derive(Clone)]
-pub(crate) struct ManagedClient {
-    pub account: Account,
-    pub client: Arc<Mutex<SipClient>>,
-    pub codec: Codec,
-    pub active: Arc<Mutex<bool>>,
-    pub should_register: Arc<Mutex<bool>>,
-    pub audio_tx: tokio::sync::broadcast::Sender<Vec<i16>>,
-}
 
 /// The service that holds all managed clients and handles IPC
 pub struct Service {
@@ -48,106 +35,6 @@ pub struct Service {
     pub(crate) commands_username: Option<String>,
     pub(crate) commands_password: Option<String>,
     pub(crate) global_shutdown: Arc<Mutex<bool>>,
-}
-
-/// Helper to build a SipClient and wrap it in a ManagedClient
-pub(crate) async fn create_managed_client(account: &Account) -> Result<ManagedClient> {
-    let transport_type = account.transport.as_deref().unwrap_or("udp").to_lowercase();
-
-    let default_port: u16 = if transport_type == "tls" { 5061 } else { 5060 };
-
-    // Parse server address, auto-appending default port if missing
-    let server_addr: SocketAddr = if account.server.contains(':') {
-        account.server.parse().context(format!(
-            "Invalid server address for '{}': {}",
-            account.name, account.server
-        ))?
-    } else {
-        format!("{}:{}", account.server, default_port)
-            .parse()
-            .context(format!(
-                "Invalid server address for '{}': {}",
-                account.name, account.server
-            ))?
-    };
-
-    let (transport, local_addr) = if transport_type == "tls" {
-        let bind_addr: SocketAddr = format!("0.0.0.0:{}", account.sip_port).parse()?;
-        let transport = Transport::new_tls(bind_addr, server_addr, &account.domain).await?;
-        let local_addr = transport.local_addr()?;
-        log::info!(
-            "Account '{}' using TLS transport to {}",
-            account.name,
-            server_addr
-        );
-        (transport, local_addr)
-    } else if transport_type == "tcp" {
-        let bind_addr: SocketAddr = format!("0.0.0.0:{}", account.sip_port).parse()?;
-        let transport = Transport::new_tcp(bind_addr, server_addr).await?;
-        let local_addr = transport.local_addr()?;
-        log::info!(
-            "Account '{}' using TCP transport to {}",
-            account.name,
-            server_addr
-        );
-        (transport, local_addr)
-    } else {
-        let bind_addr: SocketAddr = format!("0.0.0.0:{}", account.sip_port).parse()?;
-        let transport = Transport::new_udp(bind_addr).await?;
-        let local_addr = transport.local_addr()?;
-        log::info!(
-            "Account '{}' using UDP transport to {}",
-            account.name,
-            server_addr
-        );
-        (transport, local_addr)
-    };
-
-    let auth_method = match account.auth_method.as_deref() {
-        Some("none") | Some("None") => AuthMethod::None,
-        _ => AuthMethod::Md5,
-    };
-
-    let codec = Codec::from_str(account.codec.as_deref().unwrap_or("pcmu")).unwrap_or(Codec::Pcmu);
-
-    let sip_settings = SipSettings::from_config(
-        account.display_name.clone(),
-        account.asserted_id.clone(),
-        account.preferred_id.clone(),
-        account.proxy.clone(),
-        account.register_expiry,
-        account.user_agent.clone(),
-        account.dtmf_mode.clone(),
-        account.early_media,
-        account.session_timers,
-    );
-
-    let client = SipClient::new(
-        transport,
-        server_addr,
-        local_addr,
-        account.username.clone(),
-        account.password.clone(),
-        account.domain.clone(),
-        account.rtp_port_start,
-        account.rtp_port_end,
-        auth_method,
-        sip_settings,
-        codec.to_config_str().to_string(),
-    )
-    .await?;
-
-    let default_register = account.register_expiry.is_some();
-    let (audio_tx, _) = tokio::sync::broadcast::channel(1000);
-
-    Ok(ManagedClient {
-        account: account.clone(),
-        client: Arc::new(Mutex::new(client)),
-        codec,
-        active: Arc::new(Mutex::new(true)),
-        should_register: Arc::new(Mutex::new(default_register)),
-        audio_tx,
-    })
 }
 
 impl Service {
@@ -230,51 +117,7 @@ impl Service {
                     .join(", ")
             );
             for (name, mc) in cls.iter() {
-                if mc.account.auto_answer.unwrap_or(false) {
-                    let client = mc.client.clone();
-                    let codec = mc.codec;
-                    let account = mc.account.clone();
-                    let shutdown = shutdown.clone();
-                    let active = mc.active.clone();
-                    let audio_tx = mc.audio_tx.clone();
-                    let account_name = name.clone();
-                    log::info!("Auto-answer enabled for '{}'", account_name);
-
-                    tokio::spawn(async move {
-                        incoming_call_watcher(
-                            account_name,
-                            client,
-                            codec,
-                            account,
-                            shutdown,
-                            active,
-                            audio_tx,
-                        )
-                        .await;
-                    });
-                }
-
-                // Spawn registration watcher
-                let client = mc.client.clone();
-                let active = mc.active.clone();
-                let should_register = mc.should_register.clone();
-                let register_expiry = mc.account.register_expiry.unwrap_or(3600);
-                let retry_interval = mc.account.register_retry_interval.unwrap_or(30);
-                let shutdown = shutdown.clone();
-                let account_name = name.clone();
-
-                tokio::spawn(async move {
-                    registration_watcher(
-                        account_name,
-                        client,
-                        active,
-                        should_register,
-                        register_expiry,
-                        retry_interval,
-                        shutdown,
-                    )
-                    .await;
-                });
+                spawn_watchers_for_client(name.clone(), mc, shutdown.clone());
             }
         }
 
