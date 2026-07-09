@@ -10,6 +10,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  CMAKE_POLICY_VERSION_MINIMUM: "3.5"
 
 jobs:
   build-release:
@@ -59,14 +60,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         continue-on-error: true
 
-      - name: Build release (no opus)
-        run: cargo build --release --target ${{ matrix.target }}
-
-      - name: Build release (with opus)
+      - name: Install Opus (Linux)
         if: startsWith(matrix.os, 'ubuntu')
         run: |
-          sudo apt-get update && sudo apt-get install -y libopus-dev
-          cargo build --release --features opus --target ${{ matrix.target }}
+          sudo apt-get update
+          sudo apt-get install -y libopus-dev
+
+      - name: Build release
+        run: cargo build --release --target ${{ matrix.target }}
 
       - name: Rename artifact
         shell: bash
