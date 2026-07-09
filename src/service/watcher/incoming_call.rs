@@ -54,6 +54,12 @@ pub async fn incoming_call_watcher(
         let to_header_val = utils::extract_header(&msg, "To");
         let remote_uri = utils::extract_uri(&from_header_val);
         let call_id = utils::extract_header(&msg, "Call-ID");
+        crate::service::logger::record_call_start(
+            &call_id,
+            &account_name,
+            &remote_uri.clone().unwrap_or_default(),
+            "IN",
+        );
         let cseq_str = utils::extract_header(&msg, "CSeq");
         let cseq: u32 = cseq_str
             .split_whitespace()
@@ -162,6 +168,7 @@ pub async fn incoming_call_watcher(
 
         if !ack_received {
             log::warn!("[{}] No ACK received, skipping call setup", account_name);
+            crate::service::logger::record_call_end(&call_id, "Failed", 0);
             continue;
         }
 
@@ -172,6 +179,7 @@ pub async fn incoming_call_watcher(
         {
             let mut c = client.lock().await;
             c.in_call = true;
+            c.call_start_time = Some(std::time::Instant::now());
             c.call_id = Some(call_id.clone());
             c.invite_cseq = Some(cseq);
             c.remote_tag = Some(from_tag.clone());
@@ -179,6 +187,7 @@ pub async fn incoming_call_watcher(
             c.remote_uri = remote_uri;
             c.rtp_receiver = Some(receiver.clone());
         }
+        crate::service::logger::record_call_connect(&call_id);
 
         // Run IVR in background if configured
         let ivr_task = if let Some(ivr_config) = ivr::build_ivr_config(&account) {
@@ -286,11 +295,19 @@ pub async fn incoming_call_watcher(
         // Cleanup call state
         {
             let mut c = client.lock().await;
+            let duration_secs = c
+                .call_start_time
+                .map(|t| t.elapsed().as_secs())
+                .unwrap_or(0);
+            if let Some(ref cid) = c.call_id {
+                crate::service::logger::record_call_end(cid, "Completed", duration_secs);
+            }
             // Stop RTP receiver to prevent resource leak
             if let Some(ref rx) = c.rtp_receiver {
                 rx.stop();
             }
             c.in_call = false;
+            c.call_start_time = None;
             c.call_id = None;
             c.invite_cseq = None;
             c.remote_tag = None;

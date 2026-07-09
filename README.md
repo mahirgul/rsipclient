@@ -11,6 +11,14 @@ Place calls, play audio, detect DTMF, transfer callers, record voicemail, and co
 
 > [!NOTE]
 > 🌐 **Built-in Web Dashboard & REST API:** Configure your accounts, place calls, trigger DTMF, transfer calls, stream real-time logs, and even use your browser microphone/speakers as a **Web Softphone** (via WebSockets) directly through the modern web dashboard interface.
+> 
+> *New in v2.0.0:*
+> * 🎛️ **Visual IVR Flow Builder** — Design IVR menus, welcome greetings, digit timeouts, and DTMF-to-action bindings graphically in the Web UI.
+> * 📁 **Web Audio File Manager** — Upload, play, and delete WAV audio clips directly from the dashboard, or **Record WAV** clips from your microphone downsampled on-the-fly to mono 8kHz 16-bit PCM.
+> * 📊 **SIP Packet Tracer** — Real-time Wireshark-like SIP sequence flow visualizer. Click any message to inspect raw headers and SDP bodies.
+> * 📞 **Call History Logs** — Complete call logs capturing timestamps, directions, final states, and captured DTMF keypresses.
+> * 📈 **Live Resource Charts** — Smooth, animated real-time CPU and Memory utilization sparklines.
+> * ⚙️ **Plain TCP SIP Transport** — Validated plain TCP transport support alongside UDP and TLS.
 
 Ideal for:
 - 💻 **Web Control & Dashboard** — full UI and REST API to manage accounts, calls, and real-time logs
@@ -25,7 +33,12 @@ Ideal for:
 - **SIP signalling** — REGISTER, INVITE, BYE, CANCEL, ACK, REFER
 - **MD5 digest** authentication (RFC 2617)
 - **RTP streaming** — G.711 μ-law, A-law, Opus codecs
-- **IVR / Auto-attendant** — answer, play menus, collect DTMF, transfer, hold, record
+- **Visual IVR Builder** — configure welcome audio, timeouts, and DTMF menu actions graphically
+- **Web Audio Manager** — upload, play, and delete audio clips; record mono 8kHz WAV from browser microphone
+- **SIP Packet Tracer** — sequence diagram of SIP signaling flow with message inspectors
+- **Call History Logs** — detailed records of active/past calls with captured DTMF tones
+- **Live System Charts** — real-time SVG sparklines for CPU and memory usage
+- **SIP transports** — UDP, TCP (validated), and TLS (SIPS)
 - **RFC 2833 DTMF** — in-band telephone-event detection
 - **RFC 3325** — P-Asserted-Identity, P-Preferred-Identity headers
 - **RFC 4028** — Session-Expires / session timers

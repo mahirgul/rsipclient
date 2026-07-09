@@ -179,6 +179,13 @@ impl IvrSession {
         }
 
         log::info!("IVR DTMF: {:?}", all);
+        if !all.is_empty() {
+            let cid = {
+                let cg = client.lock().await;
+                cg.call_id.clone().unwrap_or_default()
+            };
+            crate::service::logger::record_call_dtmf(&cid, &all);
+        }
         all
     }
 

@@ -144,6 +144,12 @@ pub async fn start_web_server(state: AppState, port: u16) {
         .route("/api/config", get(get_config))
         .route("/api/config", put(put_config))
         .route("/api/logs", get(get_logs))
+        .route("/api/sip/traces", get(get_sip_traces))
+        .route("/api/calls/history", get(get_call_history))
+        .route("/api/audio", get(audio_files::get_audio_files))
+        .route("/api/audio/:name", post(audio_files::upload_audio_file))
+        .route("/api/audio/:name", get(audio_files::download_audio_file))
+        .route("/api/audio/:name", delete(audio_files::delete_audio_file))
         .route("/api/accounts/:name/audio-ws", get(audio_ws_handler))
         .with_state(state);
 

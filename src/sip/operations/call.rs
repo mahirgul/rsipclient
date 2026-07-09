@@ -31,6 +31,7 @@ impl SipClient {
                 .await?;
 
         let call_id = self.new_call_id();
+        crate::service::logger::record_call_start(&call_id, &self.username, target_uri, "OUT");
         let branch = self.new_branch();
         let cseq = self.next_cseq().await;
         let local = self.local_addr_str();
@@ -121,16 +122,19 @@ impl SipClient {
                 self.remote_rtp_addr = crate::service::watcher::parse_sdp_connection(&final_resp2);
                 self.rtp_receiver = Some(receiver);
                 self.in_call = true;
+                self.call_start_time = Some(std::time::Instant::now());
                 self.send_ack(target_uri, &local, &call_id, auth_cseq)
                     .await?;
                 log::info!(
                     "Call established (with INVITE auth)! Remote RTP: {:?}",
                     self.remote_rtp_addr
                 );
+                crate::service::logger::record_call_connect(&call_id);
                 return Ok(true);
             }
 
             log::error!("Auth INVITE failed (status={})", final_status2);
+            crate::service::logger::record_call_end(&call_id, "Failed", 0);
             self.remote_uri = None;
             return Ok(false);
         }
@@ -171,15 +175,19 @@ impl SipClient {
             self.invite_cseq = Some(cseq);
             self.remote_tag = final_tag;
             self.in_call = true;
+            self.call_start_time = Some(std::time::Instant::now());
             self.remote_rtp_addr = crate::service::watcher::parse_sdp_connection(&final_resp);
             self.rtp_receiver = Some(receiver);
             self.send_ack(target_uri, &local, &call_id, cseq).await?;
             log::info!("Call established! Remote RTP: {:?}", self.remote_rtp_addr);
+            crate::service::logger::record_call_connect(&call_id);
             return Ok(true);
         }
 
         log::error!("Call failed (status={})", final_status);
+        crate::service::logger::record_call_end(&call_id, "Failed", 0);
         self.in_call = false;
+        self.call_start_time = None;
         self.call_id = None;
         self.invite_cseq = None;
         self.remote_tag = None;
@@ -223,7 +231,7 @@ impl SipClient {
             return Ok(false);
         }
 
-        let call_id = self.call_id.as_ref().context("No call_id")?;
+        let call_id = self.call_id.clone().context("No call_id")?;
         let remote_tag = self.remote_tag.as_ref().context("No remote_tag")?;
         let remote_uri = self.remote_uri.as_ref().context("No remote_uri")?;
         let local = self.local_addr_str();
@@ -235,7 +243,7 @@ impl SipClient {
             &local,
             &self.local_tag,
             remote_tag,
-            call_id,
+            &call_id,
             self.next_cseq().await,
             &self.new_branch(),
             &self.settings,
@@ -249,12 +257,19 @@ impl SipClient {
             rx.stop();
         }
 
+        let duration = self
+            .call_start_time
+            .map(|t| t.elapsed().as_secs())
+            .unwrap_or(0);
+        crate::service::logger::record_call_end(&call_id, "Completed", duration);
+
         if status == 200 {
             log::info!("Call ended successfully");
         } else {
             log::error!("Failed to end call cleanly (status={})", status);
         }
         self.in_call = false;
+        self.call_start_time = None;
         self.held = false;
         self.call_id = None;
         self.invite_cseq = None;
@@ -295,7 +310,9 @@ impl SipClient {
             if let Some(ref rx) = self.rtp_receiver {
                 rx.stop();
             }
+            crate::service::logger::record_call_end(call_id, "Cancelled", 0);
             self.in_call = false;
+            self.call_start_time = None;
             self.call_id = None;
             self.invite_cseq = None;
             self.remote_tag = None;
@@ -325,6 +342,10 @@ impl SipClient {
             rtp_receiver
                 .send_dtmf_digit(c, target, &mut seq, &mut timestamp)
                 .await?;
+        }
+
+        if let Some(ref cid) = self.call_id {
+            crate::service::logger::record_call_dtmf(cid, digits);
         }
 
         Ok(true)

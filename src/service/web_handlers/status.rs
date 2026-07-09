@@ -118,3 +118,23 @@ pub async fn get_logs(
     let logs = super::super::logger::get_recent_logs();
     Ok(Json(logs))
 }
+
+/// Fetch recent SIP traces from memory buffer
+pub async fn get_sip_traces(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, StatusCode> {
+    verify_token(&headers, &state)?;
+    let traces = super::super::logger::get_sip_traces();
+    Ok(Json(traces))
+}
+
+/// Fetch recent call history from memory buffer
+pub async fn get_call_history(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, StatusCode> {
+    verify_token(&headers, &state)?;
+    let history = super::super::logger::get_call_history();
+    Ok(Json(history))
+}

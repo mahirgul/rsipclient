@@ -37,6 +37,7 @@ pub struct SipClient {
     pub(crate) invite_cseq: Option<u32>,
     pub remote_tag: Option<String>,
     pub in_call: bool,
+    pub(crate) call_start_time: Option<std::time::Instant>,
     pub held: bool,
     pub registered: Arc<Mutex<bool>>,
     pub remote_rtp_addr: Option<SocketAddr>,
@@ -76,6 +77,7 @@ impl SipClient {
             invite_cseq: None,
             remote_tag: None,
             in_call: false,
+            call_start_time: None,
             held: false,
             registered: Arc::new(Mutex::new(false)),
             remote_rtp_addr: None,
@@ -114,6 +116,12 @@ impl SipClient {
 
     pub(crate) async fn send(&self, msg: &str) -> Result<String> {
         log::debug!("--- SEND ---\n{}", msg);
+        crate::service::logger::record_sip_trace(
+            "OUT",
+            &self.username,
+            msg,
+            self.transport.via_str(),
+        );
         self.transport
             .send_to(msg.as_bytes(), self.server_addr)
             .await?;
@@ -126,6 +134,12 @@ impl SipClient {
 
         let resp = String::from_utf8_lossy(&buf).to_string();
         log::debug!("--- RECV ---\n{}", resp);
+        crate::service::logger::record_sip_trace(
+            "IN",
+            &self.username,
+            &resp,
+            self.transport.via_str(),
+        );
         Ok(resp)
     }
 
@@ -137,6 +151,12 @@ impl SipClient {
             .context("Timeout waiting for response")?;
         let resp = String::from_utf8_lossy(&buf).to_string();
         log::debug!("--- RECV ---\n{}", resp);
+        crate::service::logger::record_sip_trace(
+            "IN",
+            &self.username,
+            &resp,
+            self.transport.via_str(),
+        );
         Ok(resp)
     }
 
@@ -144,6 +164,13 @@ impl SipClient {
     /// Returns None if nothing received within `timeout_ms`.
     pub async fn try_recv(&self, timeout_ms: u64) -> Option<String> {
         let buf = self.transport.try_recv(timeout_ms).await?;
-        Some(String::from_utf8_lossy(&buf).to_string())
+        let resp = String::from_utf8_lossy(&buf).to_string();
+        crate::service::logger::record_sip_trace(
+            "IN",
+            &self.username,
+            &resp,
+            self.transport.via_str(),
+        );
+        Some(resp)
     }
 }

@@ -4,6 +4,7 @@
 //! calls, system status, log streaming, and server configuration.
 
 pub mod accounts;
+pub mod audio_files;
 pub mod audio_ws;
 pub mod auth;
 pub mod calls;
@@ -20,4 +21,4 @@ pub use calls::{
     transfer_account,
 };
 pub use config_handlers::{get_config, put_config};
-pub use status::{get_logs, get_status};
+pub use status::{get_call_history, get_logs, get_sip_traces, get_status};

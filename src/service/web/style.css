@@ -733,3 +733,90 @@ footer.app-footer a {
 footer.app-footer a:hover {
     text-decoration: underline;
 }
+
+/* Helper styles for SIP sequence diagram */
+.trace-item {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+    padding: 0.55rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.trace-item:hover {
+    background: rgba(59, 130, 246, 0.08);
+    border-color: rgba(59, 130, 246, 0.3);
+}
+.trace-item.in {
+    border-left: 3px solid var(--accent-success);
+}
+.trace-item.out {
+    border-left: 3px solid var(--accent-primary);
+}
+.trace-arrow {
+    flex: 1;
+    text-align: center;
+    position: relative;
+    margin: 0 1rem;
+    font-weight: 500;
+}
+.trace-arrow::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.15);
+    z-index: 1;
+}
+.trace-arrow-text {
+    position: relative;
+    background: #0f1322;
+    padding: 0 0.5rem;
+    z-index: 2;
+    font-size: 0.75rem;
+}
+.trace-arrow.in-arrow::after {
+    content: '◀';
+    position: absolute;
+    left: 0;
+    top: calc(50% - 7px);
+    color: var(--accent-success);
+    z-index: 2;
+}
+.trace-arrow.out-arrow::after {
+    content: '▶';
+    position: absolute;
+    right: 0;
+    top: calc(50% - 7px);
+    color: var(--accent-primary);
+    z-index: 2;
+}
+
+/* DTMF Menu Builder rows */
+.ivr-menu-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.ivr-menu-row:last-child {
+    border-bottom: none;
+}
+.ivr-digit-badge {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+

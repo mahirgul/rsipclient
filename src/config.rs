@@ -283,9 +283,9 @@ impl Config {
             // Validate transport
             if let Some(ref transport) = account.transport {
                 let t = transport.to_lowercase();
-                if t != "udp" && t != "tls" {
+                if t != "udp" && t != "tcp" && t != "tls" {
                     anyhow::bail!(
-                        "Account #{} ({}) transport must be udp or tls, got '{}'",
+                        "Account #{} ({}) transport must be udp, tcp or tls, got '{}'",
                         i,
                         account.name,
                         transport
