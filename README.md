@@ -16,6 +16,9 @@
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey?style=for-the-badge" alt="Platform: Windows, Linux, macOS">
 </p>
 
+> [!IMPORTANT]
+> 🔬 **EXPERIMENTAL AI-GENERATED PROJECT:** This project is an experimental research and development effort collaboratively created by **Antigravity (Advanced AI Coding Assistant)**, **Gemini**, and **DeepSeek**. It is generated using artificial intelligence and is not intended for high-security or mission-critical production environments without thorough code audits and security hardening.
+
 **A multi-account SIP client with a built-in modern Web Dashboard, REST API, and IVR Engine, written in pure async Rust.**
 
 Place calls, play audio, detect DTMF, transfer callers, record voicemail, and configure settings using CLI commands, a JSON TCP interface, or the **beautiful interactive Web Dashboard / REST API**. No heavy frameworks, no JVM, just a single lightweight binary that speaks SIP + RTP.
