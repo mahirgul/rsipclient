@@ -45,6 +45,7 @@ name = "my-account"
 |-------|------|---------|-------------|
 | `auth_method` | `"md5"` / `"none"` | `"md5"` | Authentication |
 | `codec` | `"pcmu"` / `"pcma"` / `"opus"` | `"pcmu"` | Audio codec |
+| `transport` | `"udp"` / `"tcp"` / `"tls"` | `"udp"` | SIP transport protocol |
 | `register_expiry` | u32 | `3600` | REGISTER expiry (seconds) |
 | `user_agent` | string | — | Custom User-Agent |
 | `dtmf_mode` | `"rfc2833"` / `"inband"` / `"info"` | — | DTMF signalling |
@@ -91,6 +92,7 @@ display_name = "Reception"
 asserted_id = "sip:+441234567890@company.com"
 
 # Protocol
+transport = "tcp"
 register_expiry = 1800
 user_agent = "MyPBX/3.0"
 dtmf_mode = "rfc2833"

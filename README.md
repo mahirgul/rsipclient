@@ -1,7 +1,8 @@
 # rsipclient — Rust SIP Client & IVR Engine
 
 [![CI](https://github.com/mahirgul/rsipclient/actions/workflows/ci.yml/badge.svg)](https://github.com/mahirgul/rsipclient/actions/workflows/ci.yml)
-[![GitHub Release](https://img.shields.io/github/v/tag/mahirgul/rsipclient?label=release&logo=github)](https://github.com/mahirgul/rsipclient/releases)
+[![Crates.io](https://img.shields.io/crates/v/sip-client.svg)](https://crates.io/crates/sip-client)
+[![Docs.rs](https://docs.rs/sip-client/badge.svg)](https://docs.rs/sip-client)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-stable%201.70%2B-orange.svg)](https://rust-lang.org)
 

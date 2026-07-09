@@ -40,12 +40,52 @@ End the current call.
 {"cmd":"hangup","account":"alice"}
 ```
 
+### `unregister`
+
+Unregister an account from the SIP server.
+
+```json
+{"cmd":"unregister","account":"alice"}
+```
+
 ### `cancel`
 
 Cancel a pending INVITE.
 
 ```json
 {"cmd":"cancel","account":"alice"}
+```
+
+### `hold`
+
+Hold the current active call.
+
+```json
+{"cmd":"hold","account":"alice"}
+```
+
+### `resume`
+
+Resume a held call.
+
+```json
+{"cmd":"resume","account":"alice"}
+```
+
+### `transfer`
+
+Blind transfer the call to another SIP destination.
+
+```json
+{"cmd":"transfer","account":"alice","target":"sip:carol@sip.example.com"}
+```
+
+### `dtmf`
+
+Send DTMF digits (RFC 2833 telephone-event).
+
+```json
+{"cmd":"dtmf","account":"alice","target":"1234"}
 ```
 
 ### `play`
