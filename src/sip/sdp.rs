@@ -51,13 +51,9 @@ pub fn build_sdp_single(username: &str, local_ip: &str, rtp_port: u16, codec: Co
     build_sdp(username, local_ip, rtp_port, &[codec])
 }
 
-/// Default SDP: PCMU + PCMA + Opus (if enabled)
+/// Default SDP: PCMU + PCMA + Opus
 pub fn build_sdp_default(username: &str, local_ip: &str, rtp_port: u16) -> String {
-    #[allow(unused_mut)]
     let mut codecs = vec![Codec::Pcmu, Codec::Pcma];
-
-    #[cfg(feature = "opus")]
     codecs.push(Codec::Opus);
-
     build_sdp(username, local_ip, rtp_port, &codecs)
 }

@@ -1,6 +1,6 @@
 [package]
 name = "sip-client"
-version = "2.0.0"
+version = "2.0.1"
 edition = "2021"
 description = "Multi-account SIP client with IVR/auto-attendant, DTMF detection, call transfer, recording, and JSON TCP control — all in a single Rust binary"
 license = "MIT"
@@ -14,7 +14,6 @@ authors = ["Mahir Gül <mahirgul@gmail.com>"]
 
 [features]
 default = []
-opus = ["dep:opus"]
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
@@ -29,7 +28,7 @@ serde_json = "1"
 toml = "0.8"
 axum = { version = "0.7", features = ["ws"] }
 sysinfo = "0.30"
-opus = { version = "0.3", optional = true }
+opus = { version = "0.3" }
 base64 = "0.21"
 rand = "0.8"
 tokio-native-tls = "0.3"

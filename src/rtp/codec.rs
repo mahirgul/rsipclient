@@ -182,50 +182,22 @@ pub fn alaw_to_linear(alaw: u8) -> i16 {
 
 // ── Opus ───────────────────────────────────────────────────
 
-/// Encode audio with Opus. Falls back to PCMU when opus feature is disabled.
-#[allow(unused_variables)]
+/// Encode audio with Opus.
 pub fn opus_encode(chunk: &[i16]) -> Result<Vec<u8>> {
-    #[cfg(feature = "opus")]
-    {
-        use opus::{Application, Channels, Encoder};
-        let mut encoder = Encoder::new(48000, Channels::Mono, Application::Audio)?;
-        let mut output = vec![0u8; 4000];
-        let n = encoder.encode(chunk, &mut output)?;
-        output.truncate(n);
-        Ok(output)
-    }
-
-    #[cfg(not(feature = "opus"))]
-    {
-        use std::sync::atomic::{AtomicBool, Ordering};
-        static WARNED: AtomicBool = AtomicBool::new(false);
-        if !WARNED.swap(true, Ordering::Relaxed) {
-            log::warn!("Opus support not compiled — falling back to PCMU");
-        }
-        Ok(chunk.iter().map(|&s| linear_to_mulaw(s)).collect())
-    }
+    use opus::{Application, Channels, Encoder};
+    let mut encoder = Encoder::new(48000, Channels::Mono, Application::Audio)?;
+    let mut output = vec![0u8; 4000];
+    let n = encoder.encode(chunk, &mut output)?;
+    output.truncate(n);
+    Ok(output)
 }
 
-/// Decode audio with Opus. Falls back to PCMU when opus feature is disabled.
-#[allow(unused_variables)]
+/// Decode audio with Opus.
 pub fn opus_decode(payload: &[u8]) -> Result<Vec<i16>> {
-    #[cfg(feature = "opus")]
-    {
-        use opus::{Channels, Decoder};
-        let mut decoder = Decoder::new(48000, Channels::Mono)?;
-        let mut output = vec![0i16; 5760]; // Max frame size
-        let n = decoder.decode(payload, &mut output, false)?;
-        output.truncate(n);
-        Ok(output)
-    }
-
-    #[cfg(not(feature = "opus"))]
-    {
-        use std::sync::atomic::{AtomicBool, Ordering};
-        static WARNED: AtomicBool = AtomicBool::new(false);
-        if !WARNED.swap(true, Ordering::Relaxed) {
-            log::warn!("Opus support not compiled — falling back to PCMU decode");
-        }
-        Ok(payload.iter().map(|&b| mulaw_to_linear(b)).collect())
-    }
+    use opus::{Channels, Decoder};
+    let mut decoder = Decoder::new(48000, Channels::Mono)?;
+    let mut output = vec![0i16; 5760]; // Max frame size
+    let n = decoder.decode(payload, &mut output, false)?;
+    output.truncate(n);
+    Ok(output)
 }
