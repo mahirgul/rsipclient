@@ -325,6 +325,109 @@ impl IvrSession {
                 drop(cg);
                 Ok(true)
             }
+
+            IvrAction::Webhook(url) => {
+                log::info!("IVR: executing Webhook action target {}", url);
+                let mut ctx = std::collections::HashMap::new();
+                let (account, caller, call_id) = {
+                    let cg = client.lock().await;
+                    (
+                        cg.username.clone(),
+                        cg.remote_uri.clone().unwrap_or_default(),
+                        cg.call_id.clone().unwrap_or_default(),
+                    )
+                };
+                ctx.insert("account".to_string(), account);
+                ctx.insert("caller".to_string(), caller);
+                ctx.insert("call_id".to_string(), call_id);
+
+                let client_http = reqwest::Client::new();
+                if let Ok(resp) = client_http.post(url).json(&ctx).send().await {
+                    if let Ok(plugin_res) = resp.json::<crate::plugins::PluginActionResult>().await
+                    {
+                        let inner_action = match plugin_res {
+                            crate::plugins::PluginActionResult::Transfer { target } => {
+                                IvrAction::Transfer(target)
+                            }
+                            crate::plugins::PluginActionResult::Playback { target } => {
+                                IvrAction::Playback(target)
+                            }
+                            crate::plugins::PluginActionResult::Record { target, duration } => {
+                                IvrAction::Record {
+                                    path: target,
+                                    duration_secs: duration.unwrap_or(10),
+                                }
+                            }
+                            crate::plugins::PluginActionResult::Hold => IvrAction::Hold,
+                            crate::plugins::PluginActionResult::Hangup => IvrAction::Hangup,
+                            crate::plugins::PluginActionResult::None => return Ok(false),
+                        };
+                        return Box::pin(self.execute_action(
+                            client,
+                            &inner_action,
+                            remote,
+                            receiver,
+                        ))
+                        .await;
+                    }
+                }
+                Ok(false)
+            }
+
+            IvrAction::Script(script_path) => {
+                log::info!("IVR: executing Script action target {}", script_path);
+                let mut ctx = std::collections::HashMap::new();
+                let (account, caller, call_id) = {
+                    let cg = client.lock().await;
+                    (
+                        cg.username.clone(),
+                        cg.remote_uri.clone().unwrap_or_default(),
+                        cg.call_id.clone().unwrap_or_default(),
+                    )
+                };
+                ctx.insert("account".to_string(), account);
+                ctx.insert("caller".to_string(), caller);
+                ctx.insert("call_id".to_string(), call_id);
+
+                let path = std::path::Path::new(script_path);
+                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                let res = match ext {
+                    "rhai" => crate::plugins::rhai_runner::RhaiRunner::new().execute_script(
+                        path,
+                        None,
+                        Some(ctx),
+                    ),
+                    "lua" => crate::plugins::lua_runner::LuaRunner::new().execute_script(
+                        path,
+                        None,
+                        Some(ctx),
+                    ),
+                    _ => Err(format!("Unknown script extension '{}'", ext)),
+                };
+
+                if let Ok(plugin_res) = res {
+                    let inner_action = match plugin_res {
+                        crate::plugins::PluginActionResult::Transfer { target } => {
+                            IvrAction::Transfer(target)
+                        }
+                        crate::plugins::PluginActionResult::Playback { target } => {
+                            IvrAction::Playback(target)
+                        }
+                        crate::plugins::PluginActionResult::Record { target, duration } => {
+                            IvrAction::Record {
+                                path: target,
+                                duration_secs: duration.unwrap_or(10),
+                            }
+                        }
+                        crate::plugins::PluginActionResult::Hold => IvrAction::Hold,
+                        crate::plugins::PluginActionResult::Hangup => IvrAction::Hangup,
+                        crate::plugins::PluginActionResult::None => return Ok(false),
+                    };
+                    return Box::pin(self.execute_action(client, &inner_action, remote, receiver))
+                        .await;
+                }
+                Ok(false)
+            }
         }
     }
 

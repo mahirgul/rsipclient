@@ -18,6 +18,10 @@ pub enum IvrAction {
     Hold,
     /// Hang up
     Hangup,
+    /// Query an external Webhook URL to get dynamic action
+    Webhook(String),
+    /// Execute a local Rhai (.rhai) or Lua (.lua) script to get dynamic action
+    Script(String),
 }
 
 /// DTMF to action mapping for a menu

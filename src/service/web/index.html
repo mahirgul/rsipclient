@@ -43,6 +43,7 @@
                 <button class="tab-btn" onclick="switchTab('settings')">Global Settings</button>
                 <button class="tab-btn" onclick="switchTab('logs')">Console Logs</button>
                 <button class="tab-btn" onclick="switchTab('tracer')">SIP Tracer</button>
+                <button class="tab-btn" onclick="switchTab('plugins')">Plugin Manager</button>
             </nav>
             <div class="header-actions">
                 <div id="uptime" class="uptime-badge">Uptime: 00:00:00</div>
@@ -395,6 +396,35 @@
             </div>
         </main>
         
+        <!-- ── TAB: PLUGIN MANAGER ── -->
+        <main id="tab-plugins" class="tab-content">
+            <div class="section-card glass">
+                <div class="section-title">
+                    <span>Plugin & Script Manager (Rhai & Lua Engine)</span>
+                    <button class="btn btn-success" onclick="createNewPluginScript()" style="width: auto; padding: 0.5rem 1rem; font-size: 0.85rem;">+ New Script File</button>
+                </div>
+
+                <div class="dashboard-detail-grid" style="grid-template-columns: 280px 1fr; gap: 1.5rem;">
+                    <!-- Left Column: Script Files List -->
+                    <div style="background: rgba(10, 12, 18, 0.6); padding: 1rem; border-radius: 8px; border: 1px solid var(--card-border);">
+                        <h4 style="margin: 0 0 1rem 0; font-size: 0.85rem; color: var(--text-secondary); text-transform: uppercase;">Script Files (plugins/)</h4>
+                        <div id="plugin-scripts-list" style="display: flex; flex-direction: column;">
+                            <!-- Dynamic script file items -->
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Code Editor & Actions -->
+                    <div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                            <h4 id="plugin-script-title" style="margin: 0; font-size: 0.9rem; color: var(--accent-primary);">Select a script file to edit</h4>
+                            <button class="btn btn-primary" onclick="saveCurrentPluginScript()" style="width: auto; padding: 0.4rem 1.2rem; font-size: 0.85rem;">Save Script</button>
+                        </div>
+                        <textarea id="plugin-script-editor" class="console-box" style="width: 100%; height: 450px; font-family: 'Fira Code', monospace; font-size: 0.85rem; padding: 1rem; color: #a9b7c6; background: rgba(10, 12, 18, 0.8); border: 1px solid var(--card-border); border-radius: 6px; resize: vertical; outline: none;" placeholder="Select or create a .rhai or .lua script file..."></textarea>
+                    </div>
+                </div>
+            </div>
+        </main>
+        
         <!-- ── APP FOOTER ── -->
         <footer class="app-footer">
             <div>
@@ -583,6 +613,7 @@
     <script src="/auth.js"></script>
     <script src="/audio.js"></script>
     <script src="/config.js"></script>
+    <script src="/plugins.js"></script>
     <script src="/app.js"></script>
 </body>
 </html>

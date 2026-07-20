@@ -63,6 +63,9 @@ pub struct Config {
 
     /// List of SIP accounts
     pub accounts: Vec<Account>,
+
+    /// Optional Plugin System settings
+    pub plugins: Option<crate::plugins::PluginSystemConfig>,
 }
 
 /// A single SIP account configuration

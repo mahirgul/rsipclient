@@ -1,6 +1,6 @@
 [package]
 name = "sip-client"
-version = "2.0.6"
+version = "2.1.0"
 edition = "2021"
 description = "Multi-account SIP client with IVR/auto-attendant, DTMF detection, call transfer, recording, and JSON TCP control — all in a single Rust binary"
 license = "MIT"
@@ -33,6 +33,9 @@ base64 = "0.21"
 rand = "0.8"
 tokio-native-tls = "0.3"
 futures-util = "0.3"
+rhai = { version = "1.16", features = ["sync"] }
+mlua = { version = "0.9", features = ["lua54", "vendored", "async"] }
+reqwest = { version = "0.11", default-features = false, features = ["json", "default-tls"] }
 
 [profile.release]
 opt-level = 3

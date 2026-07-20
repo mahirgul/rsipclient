@@ -4,7 +4,7 @@
   <a href="https://github.com/mahirgul/rsipclient/actions/workflows/ci.yml">
     <img src="https://img.shields.io/github/actions/workflow/status/mahirgul/rsipclient/ci.yml?branch=master&style=for-the-badge&logo=github-actions&logoColor=white&label=CI&color=2ea44f" alt="CI Status">
   </a>
-  <img src="https://img.shields.io/badge/Release-v2.0.6-blue?style=for-the-badge&logo=git&logoColor=white" alt="Release v2.0.6">
+  <img src="https://img.shields.io/badge/Release-v2.1.0-blue?style=for-the-badge&logo=git&logoColor=white" alt="Release v2.1.0">
   <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License">
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey?style=for-the-badge" alt="Windows, Linux & macOS">
 </p>
@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.75%2B-orange?style=for-the-badge&logo=rust&logoColor=white" alt="Rust 1.75+">
   <img src="https://img.shields.io/badge/Axum-0.7%2B-009688?style=for-the-badge&logo=rust&logoColor=white" alt="Axum 0.7+">
-  <img src="https://img.shields.io/badge/Tokio-1.35%2B-EE4C2C?style=for-the-badge&logo=rust&logoColor=white" alt="Tokio 1.35+">
+  <img src="https://img.shields.io/badge/Plugins-Rhai%20%2F%20Lua-33a3ff?style=for-the-badge&logo=lua&logoColor=white" alt="Rhai & Lua Plugins">
   <img src="https://img.shields.io/badge/Web%20Audio-JS-FFD21E?style=for-the-badge&logo=javascript&logoColor=black" alt="JS Web Audio">
 </p>
 
@@ -26,14 +26,17 @@
 > [!IMPORTANT]
 > 🔬 **EXPERIMENTAL AI-GENERATED PROJECT:** This project is an experimental research and development effort collaboratively created by **Antigravity (Advanced AI Coding Assistant)**, **Gemini**, and **DeepSeek**. It is generated using artificial intelligence and is not intended for high-security or mission-critical production environments without thorough code audits and security hardening.
 
-**A multi-account SIP client with a built-in modern Web Dashboard, REST API, and IVR Engine, written in pure async Rust.**
+**A multi-account SIP client with a built-in modern Web Dashboard, REST API, IVR Engine, and Plugin Subsystem, written in pure async Rust.**
 
 Place calls, play audio, detect DTMF, transfer callers, record voicemail, and configure settings using CLI commands, a JSON TCP interface, or the **beautiful interactive Web Dashboard / REST API**. No heavy frameworks, no JVM, just a single lightweight binary that speaks SIP + RTP.
 
 > [!NOTE]
 > 🌐 **Built-in Web Dashboard & REST API:** Configure your accounts, place calls, trigger DTMF, transfer calls, stream real-time logs, and even use your browser microphone/speakers as a **Web Softphone** (via WebSockets) directly through the modern web dashboard interface.
 > 
-> *New in v2.0.6:*
+> *New in v2.1.0:*
+> * 🧩 **Dual Scripting Engine (Rhai & Lua 5.4)** — Write custom IVR logic and event handlers using either `.rhai` (pure Rust) or `.lua` (standalone Lua 5.4) scripts in `plugins/`.
+> * 🌐 **HTTP Webhooks** — Asynchronously POST client events (`incoming_call`, `call_state`, `dtmf`, `registration`) and query dynamic IVR menu responses over HTTP REST.
+> * 🎛️ **Web UI Plugin Manager** — Dedicated tab to view, create, edit, test, and monitor `.rhai` and `.lua` scripts directly from the Web Dashboard.
 > * 🎧 **Hardware Sound Card Selection** — Select preferred hardware microphone and speaker sound card devices for each account in the Web UI, with live audio device switching during ongoing call audio sessions.
 > * 🎛️ **Visual IVR Flow Builder** — Design IVR menus, welcome greetings, digit timeouts, and DTMF-to-action bindings graphically in the Web UI.
 > * 📁 **Web Audio File Manager** — Upload, play, and delete WAV audio clips directly from the dashboard, or **Record WAV** clips from your microphone downsampled on-the-fly to mono 8kHz 16-bit PCM.

@@ -294,7 +294,7 @@ pub fn build_bye(
     )
 }
 
-/// Build CANCEL request
+/// Build CANCEL request with optional Reason header (RFC 3326)
 pub fn build_cancel(
     username: &str,
     domain: &str,
@@ -317,6 +317,7 @@ pub fn build_cancel(
          To: <{}>\r\n\
          Call-ID: {}\r\n\
          CSeq: {} CANCEL\r\n\
+         Reason: Q.850;cause=16;text=\"Normal call clearing\"\r\n\
          Content-Length: 0\r\n\
          \r\n",
         remote_uri,
@@ -329,4 +330,272 @@ pub fn build_cancel(
         call_id,
         cseq
     )
+}
+
+/// Build PRACK request for reliable provisional responses (RFC 3262)
+#[allow(dead_code)]
+pub fn build_prack(
+    target_uri: &str,
+    username: &str,
+    domain: &str,
+    local_addr: &str,
+    local_tag: &str,
+    remote_tag: &str,
+    call_id: &str,
+    cseq: u32,
+    rseq: u32,
+    invite_cseq: u32,
+    branch: &str,
+    settings: &SipSettings,
+    via_transport: &str,
+) -> String {
+    let from = settings.format_from(username, domain);
+
+    format!(
+        "PRACK {} SIP/2.0\r\n\
+         Via: SIP/2.0/{} {};branch={}\r\n\
+         Max-Forwards: 70\r\n\
+         From: {};tag={}\r\n\
+         To: <{}>;tag={}\r\n\
+         Call-ID: {}\r\n\
+         CSeq: {} PRACK\r\n\
+         RAck: {} {} INVITE\r\n\
+         Content-Length: 0\r\n\
+         \r\n",
+        target_uri,
+        via_transport.to_uppercase(),
+        local_addr,
+        branch,
+        from,
+        local_tag,
+        target_uri,
+        remote_tag,
+        call_id,
+        cseq,
+        rseq,
+        invite_cseq
+    )
+}
+
+/// Build SIP MESSAGE request for instant messaging (RFC 3428)
+pub fn build_message(
+    target_uri: &str,
+    username: &str,
+    domain: &str,
+    local_addr: &str,
+    local_tag: &str,
+    branch: &str,
+    call_id: &str,
+    cseq: u32,
+    text_body: &str,
+    settings: &SipSettings,
+    via_transport: &str,
+) -> String {
+    let from = settings.format_from(username, domain);
+    let body_len = text_body.len();
+
+    format!(
+        "MESSAGE {} SIP/2.0\r\n\
+         Via: SIP/2.0/{} {};branch={}\r\n\
+         Max-Forwards: 70\r\n\
+         From: {};tag={}\r\n\
+         To: <{}>\r\n\
+         Call-ID: {}\r\n\
+         CSeq: {} MESSAGE\r\n\
+         Content-Type: text/plain;charset=UTF-8\r\n\
+         Content-Length: {}\r\n\
+         \r\n\
+         {}",
+        target_uri,
+        via_transport.to_uppercase(),
+        local_addr,
+        branch,
+        from,
+        local_tag,
+        target_uri,
+        call_id,
+        cseq,
+        body_len,
+        text_body
+    )
+}
+
+/// Build SIP INFO request for out-of-band DTMF relay (RFC 6086)
+pub fn build_info_dtmf(
+    target_uri: &str,
+    username: &str,
+    domain: &str,
+    local_addr: &str,
+    local_tag: &str,
+    remote_tag: &str,
+    call_id: &str,
+    cseq: u32,
+    branch: &str,
+    digit: char,
+    duration_ms: u32,
+    settings: &SipSettings,
+    via_transport: &str,
+) -> String {
+    let from = settings.format_from(username, domain);
+    let body = format!("Signal={}\r\nDuration={}\r\n", digit, duration_ms);
+    let body_len = body.len();
+
+    format!(
+        "INFO {} SIP/2.0\r\n\
+         Via: SIP/2.0/{} {};branch={}\r\n\
+         Max-Forwards: 70\r\n\
+         From: {};tag={}\r\n\
+         To: <{}>;tag={}\r\n\
+         Call-ID: {}\r\n\
+         CSeq: {} INFO\r\n\
+         Content-Type: application/dtmf-relay\r\n\
+         Content-Length: {}\r\n\
+         \r\n\
+         {}",
+        target_uri,
+        via_transport.to_uppercase(),
+        local_addr,
+        branch,
+        from,
+        local_tag,
+        target_uri,
+        remote_tag,
+        call_id,
+        cseq,
+        body_len,
+        body
+    )
+}
+
+/// Build SIP SUBSCRIBE request for event notifications (RFC 6665 / RFC 3265)
+#[allow(dead_code)]
+pub fn build_subscribe(
+    target_uri: &str,
+    username: &str,
+    domain: &str,
+    local_addr: &str,
+    local_tag: &str,
+    branch: &str,
+    call_id: &str,
+    cseq: u32,
+    event_type: &str,
+    expires_secs: u32,
+    settings: &SipSettings,
+    via_transport: &str,
+) -> String {
+    let from = settings.format_from(username, domain);
+
+    format!(
+        "SUBSCRIBE {} SIP/2.0\r\n\
+         Via: SIP/2.0/{} {};branch={}\r\n\
+         Max-Forwards: 70\r\n\
+         From: {};tag={}\r\n\
+         To: <{}>\r\n\
+         Call-ID: {}\r\n\
+         CSeq: {} SUBSCRIBE\r\n\
+         Event: {}\r\n\
+         Expires: {}\r\n\
+         Content-Length: 0\r\n\
+         \r\n",
+        target_uri,
+        via_transport.to_uppercase(),
+        local_addr,
+        branch,
+        from,
+        local_tag,
+        target_uri,
+        call_id,
+        cseq,
+        event_type,
+        expires_secs
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_rfc3326_reason_header() {
+        let settings = SipSettings::default();
+        let cancel = build_cancel(
+            "alice",
+            "example.com",
+            "sip:bob@example.com",
+            "192.168.1.10:5060",
+            "tag-1",
+            "callid-1",
+            1,
+            "branch-1",
+            &settings,
+            "udp",
+        );
+        assert!(cancel.contains("Reason: Q.850;cause=16;text=\"Normal call clearing\""));
+    }
+
+    #[test]
+    fn test_rfc3262_prack_builder() {
+        let settings = SipSettings::default();
+        let prack = build_prack(
+            "sip:bob@example.com",
+            "alice",
+            "example.com",
+            "192.168.1.10:5060",
+            "tag-1",
+            "tag-remote",
+            "callid-1",
+            2,
+            1001,
+            1,
+            "branch-1",
+            &settings,
+            "udp",
+        );
+        assert!(prack.contains("PRACK sip:bob@example.com SIP/2.0"));
+        assert!(prack.contains("RAck: 1001 1 INVITE"));
+    }
+
+    #[test]
+    fn test_rfc3428_message_builder() {
+        let settings = SipSettings::default();
+        let msg = build_message(
+            "sip:bob@example.com",
+            "alice",
+            "example.com",
+            "192.168.1.10:5060",
+            "tag-1",
+            "branch-1",
+            "callid-1",
+            1,
+            "Hello World!",
+            &settings,
+            "udp",
+        );
+        assert!(msg.contains("MESSAGE sip:bob@example.com SIP/2.0"));
+        assert!(msg.contains("Content-Type: text/plain;charset=UTF-8"));
+        assert!(msg.contains("Hello World!"));
+    }
+
+    #[test]
+    fn test_rfc6086_info_dtmf_builder() {
+        let settings = SipSettings::default();
+        let info = build_info_dtmf(
+            "sip:bob@example.com",
+            "alice",
+            "example.com",
+            "192.168.1.10:5060",
+            "tag-1",
+            "tag-remote",
+            "callid-1",
+            2,
+            "branch-1",
+            '5',
+            250,
+            &settings,
+            "udp",
+        );
+        assert!(info.contains("INFO sip:bob@example.com SIP/2.0"));
+        assert!(info.contains("Signal=5"));
+        assert!(info.contains("Duration=250"));
+    }
 }

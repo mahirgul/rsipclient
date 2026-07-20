@@ -173,4 +173,124 @@ impl SipClient {
         );
         Some(resp)
     }
+
+    /// Send a SIP MESSAGE text chat request (RFC 3428)
+    pub async fn send_message(&self, target_uri: &str, text_body: &str) -> Result<String> {
+        let branch = self.new_branch();
+        let call_id = self.new_call_id();
+        let cseq = self.next_cseq().await;
+        let msg = crate::sip::messages::build_message(
+            target_uri,
+            &self.username,
+            &self.domain,
+            &self.local_addr_str(),
+            &self.local_tag,
+            &branch,
+            &call_id,
+            cseq,
+            text_body,
+            &self.settings,
+            self.transport.via_str(),
+        );
+        self.send(&msg).await
+    }
+
+    /// Send out-of-band SIP INFO DTMF digit (RFC 6086)
+    pub async fn send_info_dtmf(&self, digit: char, duration_ms: u32) -> Result<String> {
+        let remote_uri = self
+            .remote_uri
+            .as_deref()
+            .ok_or_else(|| anyhow::anyhow!("Not in an active call"))?;
+        let remote_tag = self
+            .remote_tag
+            .as_deref()
+            .ok_or_else(|| anyhow::anyhow!("No remote tag"))?;
+        let call_id = self
+            .call_id
+            .as_deref()
+            .ok_or_else(|| anyhow::anyhow!("No active Call-ID"))?;
+        let branch = self.new_branch();
+        let cseq = self.next_cseq().await;
+
+        let msg = crate::sip::messages::build_info_dtmf(
+            remote_uri,
+            &self.username,
+            &self.domain,
+            &self.local_addr_str(),
+            &self.local_tag,
+            remote_tag,
+            call_id,
+            cseq,
+            &branch,
+            digit,
+            duration_ms,
+            &self.settings,
+            self.transport.via_str(),
+        );
+        self.send(&msg).await
+    }
+
+    /// Send a SIP SUBSCRIBE request (RFC 6665 / RFC 3265)
+    #[allow(dead_code)]
+    pub async fn send_subscribe(
+        &self,
+        target_uri: &str,
+        event_type: &str,
+        expires_secs: u32,
+    ) -> Result<String> {
+        let branch = self.new_branch();
+        let call_id = self.new_call_id();
+        let cseq = self.next_cseq().await;
+        let msg = crate::sip::messages::build_subscribe(
+            target_uri,
+            &self.username,
+            &self.domain,
+            &self.local_addr_str(),
+            &self.local_tag,
+            &branch,
+            &call_id,
+            cseq,
+            event_type,
+            expires_secs,
+            &self.settings,
+            self.transport.via_str(),
+        );
+        self.send(&msg).await
+    }
+
+    /// Send a PRACK request for reliable provisional responses (RFC 3262)
+    #[allow(dead_code)]
+    pub async fn send_prack(&self, rseq: u32, invite_cseq: u32) -> Result<String> {
+        let remote_uri = self
+            .remote_uri
+            .as_deref()
+            .ok_or_else(|| anyhow::anyhow!("Not in an active call"))?;
+        let remote_tag = self
+            .remote_tag
+            .as_deref()
+            .ok_or_else(|| anyhow::anyhow!("No remote tag"))?;
+        let call_id = self
+            .call_id
+            .as_deref()
+            .ok_or_else(|| anyhow::anyhow!("No active Call-ID"))?;
+        let branch = self.new_branch();
+        let cseq = self.next_cseq().await;
+
+        let msg = crate::sip::messages::build_prack(
+            remote_uri,
+            &self.username,
+            &self.domain,
+            &self.local_addr_str(),
+            &self.local_tag,
+            remote_tag,
+            call_id,
+            cseq,
+            rseq,
+            invite_cseq,
+            &branch,
+            &self.settings,
+            self.transport.via_str(),
+        );
+        self.send(&msg).await
+    }
 }

@@ -46,6 +46,8 @@ function switchTab(tabId) {
     } else if (tabId === 'tracer') {
         loadCallHistory();
         loadSipTraces();
+    } else if (tabId === 'plugins') {
+        loadPluginsTab();
     }
 }
 

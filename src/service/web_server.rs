@@ -22,6 +22,7 @@ pub struct AppState {
     pub session_token: String,
     pub start_time: std::time::Instant,
     pub sys: Arc<Mutex<sysinfo::System>>,
+    pub plugin_manager: crate::plugins::PluginManager,
 }
 
 #[derive(serde::Serialize)]
@@ -111,6 +112,13 @@ async fn app_js() -> impl IntoResponse {
     )
 }
 
+async fn plugins_js() -> impl IntoResponse {
+    (
+        [(axum::http::header::CONTENT_TYPE, "application/javascript")],
+        include_str!("web/plugins.js"),
+    )
+}
+
 async fn favicon() -> impl IntoResponse {
     (
         [(axum::http::header::CONTENT_TYPE, "image/x-icon")],
@@ -127,6 +135,7 @@ pub async fn start_web_server(state: AppState, port: u16) {
         .route("/audio.js", get(audio_js))
         .route("/config.js", get(config_js))
         .route("/app.js", get(app_js))
+        .route("/plugins.js", get(plugins_js))
         .route("/favicon.ico", get(favicon))
         .route("/api/login", post(login))
         .route("/api/status", get(get_status))
@@ -142,6 +151,11 @@ pub async fn start_web_server(state: AppState, port: u16) {
         .route("/api/accounts/:name/resume", post(resume_account))
         .route("/api/accounts/:name/transfer", post(transfer_account))
         .route("/api/accounts/:name/dtmf", post(dtmf_account))
+        .route("/api/accounts/:name/message", post(send_message_account))
+        .route(
+            "/api/accounts/:name/info-dtmf",
+            post(send_info_dtmf_account),
+        )
         .route("/api/accounts/:name/play", post(play_account))
         .route("/api/config", get(get_config))
         .route("/api/config", put(put_config))
@@ -153,6 +167,13 @@ pub async fn start_web_server(state: AppState, port: u16) {
         .route("/api/audio/:name", get(audio_files::download_audio_file))
         .route("/api/audio/:name", delete(audio_files::delete_audio_file))
         .route("/api/accounts/:name/audio-ws", get(audio_ws_handler))
+        .route("/api/plugins", get(plugins::get_plugins_status))
+        .route("/api/plugins", put(plugins::update_plugins_config))
+        .route(
+            "/api/plugins/scripts/:filename",
+            get(plugins::get_script_content),
+        )
+        .route("/api/plugins/scripts", post(plugins::save_script_file))
         .with_state(state);
 
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));

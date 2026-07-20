@@ -224,3 +224,68 @@ pub async fn play_account(
         }))),
     }
 }
+
+#[derive(serde::Deserialize)]
+pub struct MessageRequest {
+    pub target: String,
+    pub body: String,
+}
+
+/// Send SIP MESSAGE (RFC 3428) text message via REST API
+pub async fn send_message_account(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    headers: HeaderMap,
+    Json(payload): Json<MessageRequest>,
+) -> Result<impl IntoResponse, StatusCode> {
+    verify_token(&headers, &state)?;
+    let client_arc = {
+        let cls = state.clients.lock().await;
+        let mc = cls.get(&name).ok_or(StatusCode::NOT_FOUND)?;
+        mc.client.clone()
+    };
+    let client = client_arc.lock().await;
+    match client.send_message(&payload.target, &payload.body).await {
+        Ok(resp) => Ok(Json(serde_json::json!({
+            "success": true,
+            "msg": format!("SIP MESSAGE sent to {}: {}", payload.target, resp)
+        }))),
+        Err(e) => Ok(Json(serde_json::json!({
+            "success": false,
+            "msg": format!("SIP MESSAGE error: {}", e)
+        }))),
+    }
+}
+
+#[derive(serde::Deserialize)]
+pub struct InfoDtmfRequest {
+    pub digit: char,
+    pub duration_ms: Option<u32>,
+}
+
+/// Send out-of-band SIP INFO DTMF (RFC 6086) via REST API
+pub async fn send_info_dtmf_account(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    headers: HeaderMap,
+    Json(payload): Json<InfoDtmfRequest>,
+) -> Result<impl IntoResponse, StatusCode> {
+    verify_token(&headers, &state)?;
+    let client_arc = {
+        let cls = state.clients.lock().await;
+        let mc = cls.get(&name).ok_or(StatusCode::NOT_FOUND)?;
+        mc.client.clone()
+    };
+    let client = client_arc.lock().await;
+    let dur = payload.duration_ms.unwrap_or(250);
+    match client.send_info_dtmf(payload.digit, dur).await {
+        Ok(resp) => Ok(Json(serde_json::json!({
+            "success": true,
+            "msg": format!("SIP INFO DTMF '{}' sent: {}", payload.digit, resp)
+        }))),
+        Err(e) => Ok(Json(serde_json::json!({
+            "success": false,
+            "msg": format!("SIP INFO DTMF error: {}", e)
+        }))),
+    }
+}

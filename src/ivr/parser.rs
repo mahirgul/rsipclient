@@ -39,6 +39,10 @@ pub fn parse_action(s: &str) -> IvrAction {
                 duration_secs: 10,
             }
         }
+    } else if let Some(url) = s.strip_prefix("webhook:") {
+        IvrAction::Webhook(url.to_string())
+    } else if let Some(script_path) = s.strip_prefix("script:") {
+        IvrAction::Script(script_path.to_string())
     } else if s == "hold" {
         IvrAction::Hold
     } else {

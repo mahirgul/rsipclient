@@ -35,6 +35,7 @@ pub struct Service {
     pub(crate) commands_username: Option<String>,
     pub(crate) commands_password: Option<String>,
     pub(crate) global_shutdown: Arc<Mutex<bool>>,
+    pub(crate) plugin_manager: crate::plugins::PluginManager,
 }
 
 impl Service {
@@ -77,6 +78,9 @@ impl Service {
                 (9099, None, None)
             };
 
+        let plugin_config = config.plugins.clone().unwrap_or_default();
+        let plugin_manager = crate::plugins::PluginManager::new(plugin_config);
+
         Ok(Service {
             clients: Arc::new(Mutex::new(clients)),
             control_port,
@@ -88,6 +92,7 @@ impl Service {
             commands_username,
             commands_password,
             global_shutdown: Arc::new(Mutex::new(false)),
+            plugin_manager,
         })
     }
 
@@ -135,6 +140,7 @@ impl Service {
             session_token: uuid::Uuid::new_v4().to_string(),
             start_time: std::time::Instant::now(),
             sys: Arc::new(Mutex::new(sys)),
+            plugin_manager: self.plugin_manager.clone(),
         };
         let web_port = self.web_port;
         tokio::spawn(async move {

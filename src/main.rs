@@ -16,6 +16,7 @@ mod config;
 mod ipc;
 mod ipc_client;
 mod ivr;
+mod plugins;
 mod rtp;
 mod service;
 mod sip;
