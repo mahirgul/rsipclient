@@ -172,6 +172,14 @@ pub struct Account {
 
     /// Default IVR action if no DTMF input
     pub ivr_default: Option<String>,
+
+    /// Hardware sound card audio input device (Microphone) identifier or name
+    #[serde(default)]
+    pub audio_input_device: Option<String>,
+
+    /// Hardware sound card audio output device (Speaker/Headset) identifier or name
+    #[serde(default)]
+    pub audio_output_device: Option<String>,
 }
 
 // ── Defaults ─────────────────────────────────────────────

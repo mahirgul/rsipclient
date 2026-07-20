@@ -51,12 +51,22 @@
         </header>
 
         <!-- Audio Session Info Banner -->
-        <div id="audio-session-banner" class="glass" style="display: none; align-items: center; justify-content: space-between; padding: 0.75rem 1.25rem; margin-bottom: 1.5rem; border-color: rgba(16, 185, 129, 0.4); background: rgba(16, 185, 129, 0.1);">
+        <div id="audio-session-banner" class="glass" style="display: none; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; padding: 0.75rem 1.25rem; margin-bottom: 1.5rem; border-color: rgba(16, 185, 129, 0.4); background: rgba(16, 185, 129, 0.1);">
             <div style="display: flex; align-items: center; gap: 0.75rem;">
                 <span style="font-size: 1.2rem; animation: pulse 1s infinite;">🎙️</span>
                 <span>Connected to call audio for account: <strong id="audio-session-account-name"></strong></span>
             </div>
-            <button class="btn btn-danger" style="width: auto; padding: 0.4rem 1rem; font-size: 0.85rem;" onclick="leaveCallAudio()">Disconnect Audio</button>
+            <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 0.3rem;">
+                    <label for="banner-audio-input" style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 500;">Input Sound Card:</label>
+                    <select id="banner-audio-input" onchange="changeActiveAudioInput(this.value)" style="padding: 0.3rem 0.5rem; border-radius: 4px; font-size: 0.8rem; background: rgba(31, 41, 55, 0.9); color: var(--text-primary); border: 1px solid var(--card-border); outline: none;"></select>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.3rem;">
+                    <label for="banner-audio-output" style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 500;">Output Sound Card:</label>
+                    <select id="banner-audio-output" onchange="changeActiveAudioOutput(this.value)" style="padding: 0.3rem 0.5rem; border-radius: 4px; font-size: 0.8rem; background: rgba(31, 41, 55, 0.9); color: var(--text-primary); border: 1px solid var(--card-border); outline: none;"></select>
+                </div>
+                <button class="btn btn-danger" style="width: auto; padding: 0.4rem 1rem; font-size: 0.85rem;" onclick="leaveCallAudio()">Disconnect Audio</button>
+            </div>
         </div>
 
         <!-- ── TAB: DASHBOARD ── -->
@@ -206,6 +216,7 @@
                                 <th>SIP Port</th>
                                 <th>RTP Range</th>
                                 <th>Auto Answer</th>
+                                <th>Hardware Sound Cards</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -501,6 +512,22 @@
                     <div class="form-group">
                         <label for="acc-ivr-default">DEFAULT ACTION (On Timeout / No Key)</label>
                         <input type="text" id="acc-ivr-default" class="form-control" placeholder="e.g. transfer:sip:operator@host or hangup">
+                    </div>
+                </div>
+
+                <h4 style="margin: 1.5rem 0 0.5rem 0; font-size: 0.85rem; letter-spacing: 0.5px; color: var(--accent-primary); text-transform: uppercase;">Hardware Sound Card Options</h4>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="acc-audio-input">HARDWARE AUDIO INPUT DEVICE (Microphone/Sound Card)</label>
+                        <select id="acc-audio-input" class="form-control" style="background: rgba(31, 41, 55, 0.9);">
+                            <option value="">System Default Input Device</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="acc-audio-output">HARDWARE AUDIO OUTPUT DEVICE (Speaker/Sound Card)</label>
+                        <select id="acc-audio-output" class="form-control" style="background: rgba(31, 41, 55, 0.9);">
+                            <option value="">System Default Output Device</option>
+                        </select>
                     </div>
                 </div>
 

@@ -50,6 +50,9 @@ pub async fn get_status(
 
         let is_held = client_lock.held;
 
+        let audio_input_device = mc.account.audio_input_device.clone();
+        let audio_output_device = mc.account.audio_output_device.clone();
+
         accounts.push(AccountStatus {
             name: name.clone(),
             username: client_lock.username.clone(),
@@ -62,6 +65,8 @@ pub async fn get_status(
             call_id: client_lock.call_id.clone(),
             codec: codec_str,
             codec_rate,
+            audio_input_device,
+            audio_output_device,
         });
     }
 

@@ -51,6 +51,8 @@ pub struct AccountStatus {
     pub call_id: Option<String>,
     pub codec: String,
     pub codec_rate: u32,
+    pub audio_input_device: Option<String>,
+    pub audio_output_device: Option<String>,
 }
 
 /// Helper to verify Authorization header token

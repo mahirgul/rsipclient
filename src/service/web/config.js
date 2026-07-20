@@ -158,10 +158,13 @@ async function loadAccountsConfig() {
         configBody.innerHTML = '';
 
         if (accounts.length === 0) {
-            configBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary);">No accounts found. Create a new one.</td></tr>`;
+            configBody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--text-secondary);">No accounts found. Create a new one.</td></tr>`;
         } else {
             accounts.forEach(acc => {
                 const autoAns = acc.auto_answer ? 'Yes (IVR)' : 'No';
+                const soundCards = (acc.audio_input_device || acc.audio_output_device)
+                    ? `🎙️ ${acc.audio_input_device ? 'Custom Mic' : 'Default'} / 🔊 ${acc.audio_output_device ? 'Custom Output' : 'Default'}`
+                    : 'System Default';
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td style="font-weight:600;">${acc.name}</td>
@@ -171,6 +174,7 @@ async function loadAccountsConfig() {
                     <td>${acc.sip_port === 0 ? 'Auto' : acc.sip_port}</td>
                     <td>${acc.rtp_port_start}-${acc.rtp_port_end}</td>
                     <td>${autoAns}</td>
+                    <td style="font-size:0.8rem; color: var(--text-secondary);">${soundCards}</td>
                     <td class="action-group">
                         <button class="action-btn" title="Edit account" onclick="openEditAccountModal('${acc.name}')">✎</button>
                         <button class="action-btn" title="Delete account" style="color:var(--accent-error);" onclick="deleteAccount('${acc.name}')">🗑</button>
@@ -318,6 +322,34 @@ async function unregisterAccount(name) {
     }
 }
 
+async function populateModalAudioDevices(selectedInputId = "", selectedOutputId = "") {
+    const hw = await enumerateAudioHardware();
+    const inputSelect = document.getElementById('acc-audio-input');
+    const outputSelect = document.getElementById('acc-audio-output');
+
+    if (inputSelect) {
+        inputSelect.innerHTML = '<option value="">System Default Input Device</option>';
+        hw.inputs.forEach(d => {
+            const opt = document.createElement('option');
+            opt.value = d.id;
+            opt.innerText = d.label;
+            if (d.id === selectedInputId) opt.selected = true;
+            inputSelect.appendChild(opt);
+        });
+    }
+
+    if (outputSelect) {
+        outputSelect.innerHTML = '<option value="">System Default Output Device</option>';
+        hw.outputs.forEach(d => {
+            const opt = document.createElement('option');
+            opt.value = d.id;
+            opt.innerText = d.label;
+            if (d.id === selectedOutputId) opt.selected = true;
+            outputSelect.appendChild(opt);
+        });
+    }
+}
+
 // Account addition and modification forms
 async function openAddAccountModal() {
     document.getElementById('account-form').reset();
@@ -340,6 +372,9 @@ async function openAddAccountModal() {
     // Load WAVs and render builder empty
     await fetchAudioFiles();
     populateIvrDropdowns("", {});
+
+    // Populate sound cards
+    await populateModalAudioDevices("", "");
 
     document.getElementById('account-modal').classList.add('active');
 }
@@ -389,6 +424,9 @@ async function openEditAccountModal(name) {
         document.getElementById('acc-proxy').value = acc.proxy || '';
         document.getElementById('acc-early-media').checked = acc.early_media !== undefined ? acc.early_media : true;
         document.getElementById('acc-session-timers').checked = acc.session_timers !== undefined ? acc.session_timers : false;
+
+        // Populate sound cards
+        await populateModalAudioDevices(acc.audio_input_device || "", acc.audio_output_device || "");
 
         document.getElementById('modal-mode-title').innerText = 'Edit SIP Account';
         document.getElementById('account-modal').classList.add('active');
@@ -454,7 +492,9 @@ document.getElementById('account-form').addEventListener('submit', async (e) => 
         }
     }
 
-    // Advanced & other fields
+    // Advanced & sound card fields
+    const audio_input_device = document.getElementById('acc-audio-input').value || undefined;
+    const audio_output_device = document.getElementById('acc-audio-output').value || undefined;
     const display_name = document.getElementById('acc-display-name').value || undefined;
     const user_agent = document.getElementById('acc-user-agent').value || undefined;
     const register_expiry = parseInt(document.getElementById('acc-register-expiry').value);
@@ -467,7 +507,9 @@ document.getElementById('account-form').addEventListener('submit', async (e) => 
         name, username, password, server, domain, sip_port, codec,
         transport, auth_method,
         rtp_port_start, rtp_port_end, auto_answer, ivr_welcome,
-        ivr_timeout, ivr_menu, ivr_default, display_name, user_agent, 
+        ivr_timeout, ivr_menu, ivr_default,
+        audio_input_device, audio_output_device,
+        display_name, user_agent, 
         register_expiry, register_retry_interval, proxy, early_media, session_timers
     };
 

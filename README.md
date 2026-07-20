@@ -4,7 +4,7 @@
   <a href="https://github.com/mahirgul/rsipclient/actions/workflows/ci.yml">
     <img src="https://img.shields.io/github/actions/workflow/status/mahirgul/rsipclient/ci.yml?branch=master&style=for-the-badge&logo=github-actions&logoColor=white&label=CI&color=2ea44f" alt="CI Status">
   </a>
-  <img src="https://img.shields.io/badge/Release-v2.0.4-blue?style=for-the-badge&logo=git&logoColor=white" alt="Release v2.0.4">
+  <img src="https://img.shields.io/badge/Release-v2.0.6-blue?style=for-the-badge&logo=git&logoColor=white" alt="Release v2.0.6">
   <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License">
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey?style=for-the-badge" alt="Windows, Linux & macOS">
 </p>
@@ -33,7 +33,8 @@ Place calls, play audio, detect DTMF, transfer callers, record voicemail, and co
 > [!NOTE]
 > 🌐 **Built-in Web Dashboard & REST API:** Configure your accounts, place calls, trigger DTMF, transfer calls, stream real-time logs, and even use your browser microphone/speakers as a **Web Softphone** (via WebSockets) directly through the modern web dashboard interface.
 > 
-> *New in v2.0.0:*
+> *New in v2.0.6:*
+> * 🎧 **Hardware Sound Card Selection** — Select preferred hardware microphone and speaker sound card devices for each account in the Web UI, with live audio device switching during ongoing call audio sessions.
 > * 🎛️ **Visual IVR Flow Builder** — Design IVR menus, welcome greetings, digit timeouts, and DTMF-to-action bindings graphically in the Web UI.
 > * 📁 **Web Audio File Manager** — Upload, play, and delete WAV audio clips directly from the dashboard, or **Record WAV** clips from your microphone downsampled on-the-fly to mono 8kHz 16-bit PCM.
 > * 📊 **SIP Packet Tracer** — Real-time Wireshark-like SIP sequence flow visualizer. Click any message to inspect raw headers and SDP bodies.

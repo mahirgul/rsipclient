@@ -68,6 +68,7 @@ async function updateDashboard() {
         if (!res.ok) return;
 
         const status = await res.json();
+        window.latestStatus = status;
 
         // Update Dialer Dropdown
         const dialerSelect = document.getElementById('dialer-account');
