@@ -4,7 +4,7 @@
   <a href="https://github.com/mahirgul/rsipclient/actions/workflows/ci.yml">
     <img src="https://img.shields.io/github/actions/workflow/status/mahirgul/rsipclient/ci.yml?branch=master&style=for-the-badge&logo=github-actions&logoColor=white&label=CI&color=2ea44f" alt="CI Status">
   </a>
-  <img src="https://img.shields.io/badge/Release-v2.2.0-blue?style=for-the-badge&logo=git&logoColor=white" alt="Release v2.2.0">
+  <img src="https://img.shields.io/badge/Release-v2.3.0-blue?style=for-the-badge&logo=git&logoColor=white" alt="Release v2.3.0">
   <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License">
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey?style=for-the-badge" alt="Windows, Linux & macOS">
 </p>
@@ -34,10 +34,11 @@ Place calls, play audio, detect DTMF, transfer callers, record voicemail, and co
 > [!NOTE]
 > 🌐 **Built-in Web Dashboard & REST API:** Configure your accounts, place calls, trigger DTMF, transfer calls, stream real-time logs, and even use your browser microphone/speakers as a **Web Softphone** (via WebSockets) directly through the modern web dashboard interface.
 > 
-> *New in v2.2.0:*
+> *New in v2.3.0:*
+> * 🌓 **Dark & Light Mode Switcher** — Live UI theme switcher supporting both Dark slate and Light cool-gray visual modes.
+> * 🎨 **Custom Brand Palette** — Handcrafted color palette featuring `#008fd0`, `#008ecf`, `#f0f3f4`, `#444444`, and `#373e4a`.
 > * 🪵 **Syslog Integration (RFC 5424)** — Support for forwarding logs to Syslog daemons over UDP, TCP, or Unix domain sockets (`/dev/log`).
 > * 🌐 **Web Dashboard Syslog Control** — Live Syslog configuration card in Global Settings with dynamic `PUT /api/config` reloading.
-> * 🎨 **Modern Dark Corporate Color Theme** — Modernized dashboard theme tailored with elegant deep navy, cyan accents, and crimson highlights.
 > * 🔒 **100% Self-Contained Offline Support** — Zero external fonts or JS/CSS network dependencies for isolated intranet environments.
 > * 🍓 **Raspberry Pi & Headless Linux Guide** — Detailed deployment guide for running in console mode with ALSA sound card support and systemd auto-start.
 > * ⚙️ **Plain TCP SIP Transport** — Validated plain TCP transport support alongside UDP and TLS.
