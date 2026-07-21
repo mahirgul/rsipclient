@@ -1,7 +1,32 @@
 let pollTimer = null;
 
+// Theme Manager (Dark / Light Mode)
+function initTheme() {
+    const savedTheme = localStorage.getItem('app_theme') || 'dark';
+    applyTheme(savedTheme);
+}
+
+function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('app_theme', theme);
+    const themeBtn = document.getElementById('theme-toggle-btn');
+    if (themeBtn) {
+        themeBtn.innerText = theme === 'dark' ? '☀️ Light' : '🌙 Dark';
+    }
+}
+
+function toggleTheme() {
+    const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    applyTheme(newTheme);
+}
+
+// Automatically initialize theme on script load
+initTheme();
+
 // Initialize application layout
 function initApp() {
+    initTheme();
     const token = getToken();
     if (!token) {
         document.getElementById('login-screen').style.display = 'flex';
