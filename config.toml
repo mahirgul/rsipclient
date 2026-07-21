@@ -6,6 +6,14 @@ password = "admin"
 [commands_api]
 port = 9099
 
+[syslog]
+enabled = false
+server = "127.0.0.1:514"
+protocol = "udp"
+facility = "user"
+app_name = "rsipclient"
+
+
 [[accounts]]
 name = "default"
 username = "2001"

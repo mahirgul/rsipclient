@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SIP Client Dashboard</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/style.css">
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
 </head>
@@ -46,7 +45,6 @@
                 <button class="tab-btn" onclick="switchTab('plugins')">Plugin Manager</button>
             </nav>
             <div class="header-actions">
-                <div id="uptime" class="uptime-badge">Uptime: 00:00:00</div>
                 <button class="btn btn-outline" onclick="logout()" style="width: auto; padding: 0.4rem 1rem; font-size: 0.85rem;">Logout</button>
             </div>
         </header>
@@ -87,11 +85,6 @@
                     <div class="stat-title">Active Call Stream</div>
                     <div id="stat-active-calls" class="stat-value">0</div>
                     <div class="stat-footer">Ongoing live conversations</div>
-                </div>
-                <div class="stat-card glass">
-                    <div class="stat-title">Process CPU Load</div>
-                    <div id="stat-cpu-percent" class="stat-value">0.0 %</div>
-                    <div class="stat-footer">Diagnostics metrics</div>
                 </div>
             </div>
 
@@ -141,20 +134,8 @@
                     </div>
                 </div>
 
-                <!-- Right column: Diagnostics & Dialer & Charts -->
+                <!-- Right column: Quick Dialer & Diagnostics -->
                 <div>
-                    <div class="section-card glass" style="margin-bottom: 1.5rem;">
-                        <div class="section-title">Live Resource Utilization</div>
-                        <div style="height: 120px; display: flex; align-items: flex-end; gap: 4px; padding: 10px; background: rgba(10, 12, 18, 0.4); border-radius: 8px; border: 1px solid var(--border-color); position: relative; overflow: hidden;">
-                            <svg id="resource-svg-chart" style="width: 100%; height: 100%; position: absolute; left: 0; top: 0;" preserveAspectRatio="none">
-                                <path id="cpu-chart-path" fill="rgba(16, 185, 129, 0.08)" stroke="#10b981" stroke-width="2" d=""></path>
-                                <path id="ram-chart-path" fill="rgba(59, 130, 246, 0.08)" stroke="#3b82f6" stroke-width="2" d=""></path>
-                            </svg>
-                            <div style="position: absolute; top: 8px; left: 8px; font-size: 0.75rem; color: #10b981; font-weight: 600; text-shadow: 0 1px 3px rgba(0,0,0,0.8);">CPU: <span id="chart-cpu-val">0.0%</span></div>
-                            <div style="position: absolute; top: 8px; right: 8px; font-size: 0.75rem; color: #3b82f6; font-weight: 600; text-shadow: 0 1px 3px rgba(0,0,0,0.8);">RAM: <span id="chart-ram-val">0.0MB</span></div>
-                        </div>
-                    </div>
-
                     <div class="section-card glass" style="margin-bottom: 1.5rem;">
                         <div class="section-title">Quick SIP Dialer</div>
                         <div style="display: flex; flex-direction: column; gap: 0.75rem;">
@@ -164,7 +145,7 @@
                             </div>
                             <div>
                                 <label style="display: block; font-size: 0.8rem; margin-bottom: 0.25rem; color: var(--text-secondary); font-weight: 500;">Target SIP URI</label>
-                                <input type="text" id="dialer-target" placeholder="sip:bob@sip.example.com" style="width: 100%; padding: 0.55rem; border-radius: 6px; border: 1px solid var(--card-border); background: rgba(255,255,255,0.05); color: var(--text-primary); font-size: 0.85rem; outline: none;">
+                                <input type="text" id="dialer-target" name="dialer_target_uri" autocomplete="off" aria-autocomplete="none" readonly onfocus="this.removeAttribute('readonly');" placeholder="sip:bob@sip.example.com" style="width: 100%; padding: 0.55rem; border-radius: 6px; border: 1px solid var(--card-border); background: rgba(255,255,255,0.05); color: var(--text-primary); font-size: 0.85rem; outline: none;">
                             </div>
                             <button class="btn btn-success" onclick="placeOutboundCall()" style="width: 100%; font-size: 0.85rem; padding: 0.55rem;">Place Call</button>
                         </div>
@@ -176,14 +157,6 @@
                             <div class="diag-item">
                                 <div class="diag-label">OS Environment</div>
                                 <div id="diag-os" class="diag-val">-</div>
-                            </div>
-                            <div class="diag-item">
-                                <div class="diag-label">Memory Usage</div>
-                                <div id="diag-mem" class="diag-val">0 MB</div>
-                            </div>
-                            <div class="diag-item">
-                                <div class="diag-label">CPU Consumption</div>
-                                <div id="diag-cpu" class="diag-val">0 %</div>
                             </div>
                             <div class="diag-item">
                                 <div class="diag-label">Control Port</div>
@@ -278,7 +251,7 @@
                     <button class="btn btn-primary" onclick="saveGlobalSettings()" style="width: auto; padding: 0.5rem 1.5rem;">Save & Reload Service</button>
                 </div>
                 
-                <div class="dashboard-detail-grid" style="grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;">
+                <div class="dashboard-detail-grid" style="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
                     <!-- Web UI Configuration Card -->
                     <div class="stat-card glass" style="padding: 1.5rem; text-align: left; height: auto;">
                         <h3 style="margin-top: 0; margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem; color: var(--accent-primary);">Web Dashboard Service</h3>
@@ -310,6 +283,47 @@
                         <div class="form-group" style="margin-bottom: 0;">
                             <label style="display: block; font-size: 0.85rem; margin-bottom: 0.3rem; opacity: 0.8;">API Password (Optional)</label>
                             <input type="password" id="settings-cmd-pass" class="form-input" style="width: 100%;" placeholder="Basic auth pass (falls back to web admin)">
+                        </div>
+                    </div>
+
+                    <!-- Syslog Forwarding Configuration Card -->
+                    <div class="stat-card glass" style="padding: 1.5rem; text-align: left; height: auto;">
+                        <h3 style="margin-top: 0; margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem; color: #38bdf8;">Syslog Forwarding</h3>
+                        <div class="form-group" style="margin-bottom: 0.8rem; display: flex; align-items: center; gap: 0.5rem;">
+                            <input type="checkbox" id="settings-syslog-enabled" style="cursor: pointer;">
+                            <label for="settings-syslog-enabled" style="font-size: 0.85rem; cursor: pointer;">Enable Syslog Forwarding</label>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0.8rem;">
+                            <label style="display: block; font-size: 0.85rem; margin-bottom: 0.3rem; opacity: 0.8;">Syslog Server Host:Port</label>
+                            <input type="text" id="settings-syslog-server" class="form-input" style="width: 100%;" placeholder="127.0.0.1:514">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0.8rem;">
+                            <label style="display: block; font-size: 0.85rem; margin-bottom: 0.3rem; opacity: 0.8;">Protocol</label>
+                            <select id="settings-syslog-protocol" class="form-input" style="width: 100%; background: rgba(31, 41, 55, 0.9); border: 1px solid rgba(255,255,255,0.1); color: var(--text-primary); padding: 0.4rem; border-radius: 4px; outline: none;">
+                                <option value="udp">UDP</option>
+                                <option value="tcp">TCP</option>
+                                <option value="unix">UNIX (/dev/log)</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0.8rem;">
+                            <label style="display: block; font-size: 0.85rem; margin-bottom: 0.3rem; opacity: 0.8;">Facility</label>
+                            <select id="settings-syslog-facility" class="form-input" style="width: 100%; background: rgba(31, 41, 55, 0.9); border: 1px solid rgba(255,255,255,0.1); color: var(--text-primary); padding: 0.4rem; border-radius: 4px; outline: none;">
+                                <option value="user">user (1)</option>
+                                <option value="local0">local0 (16)</option>
+                                <option value="local1">local1 (17)</option>
+                                <option value="local2">local2 (18)</option>
+                                <option value="local3">local3 (19)</option>
+                                <option value="local4">local4 (20)</option>
+                                <option value="local5">local5 (21)</option>
+                                <option value="local6">local6 (22)</option>
+                                <option value="local7">local7 (23)</option>
+                                <option value="daemon">daemon (3)</option>
+                                <option value="auth">auth (4)</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label style="display: block; font-size: 0.85rem; margin-bottom: 0.3rem; opacity: 0.8;">App Name Tag</label>
+                            <input type="text" id="settings-syslog-app-name" class="form-input" style="width: 100%;" placeholder="rsipclient">
                         </div>
                     </div>
                 </div>

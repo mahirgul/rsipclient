@@ -70,29 +70,6 @@ pub async fn get_status(
         });
     }
 
-    // Process system and resource info
-    let pid = sysinfo::get_current_pid().ok();
-    let mut memory_bytes = 0;
-    let mut cpu_percent = 0.0;
-
-    if let Some(pid) = pid {
-        let mut sys = state.sys.lock().await;
-        sys.refresh_process(pid);
-        if let Some(proc) = sys.process(pid) {
-            memory_bytes = proc.memory();
-
-            // Normalize CPU usage against logical CPU cores to show a value between 0% and 100%
-            let cpu_cores = sys.cpus().len();
-            let raw_cpu = proc.cpu_usage();
-            cpu_percent = if cpu_cores > 0 {
-                raw_cpu / cpu_cores as f32
-            } else {
-                raw_cpu
-            };
-        }
-    }
-
-    let uptime_secs = state.start_time.elapsed().as_secs();
     let os_name = format!(
         "{} {}",
         System::name().unwrap_or_else(|| "Unknown OS".to_string()),
@@ -100,9 +77,6 @@ pub async fn get_status(
     );
 
     Ok(Json(StatusResponse {
-        uptime_secs,
-        memory_bytes,
-        cpu_percent,
         os_name,
         total_accounts,
         registered_accounts,

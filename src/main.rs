@@ -32,6 +32,68 @@ async fn main() -> Result<()> {
     service::logger::init_logger();
     let cli = Cli::parse();
 
+    // Initialize Syslog if specified in config or CLI flags
+    if let Ok(cfg) = Config::load(&cli.config) {
+        if cli.syslog
+            || cli.syslog_server.is_some()
+            || cli.syslog_protocol.is_some()
+            || cli.syslog_facility.is_some()
+            || cli.syslog_app_name.is_some()
+        {
+            let mut syslog_cfg = cfg.syslog.clone().unwrap_or_else(|| config::SyslogConfig {
+                enabled: true,
+                server: "127.0.0.1:514".to_string(),
+                protocol: "udp".to_string(),
+                facility: "user".to_string(),
+                hostname: None,
+                app_name: "rsipclient".to_string(),
+            });
+            syslog_cfg.enabled = true;
+            if let Some(ref s) = cli.syslog_server {
+                syslog_cfg.server = s.clone();
+            }
+            if let Some(ref p) = cli.syslog_protocol {
+                syslog_cfg.protocol = p.clone();
+            }
+            if let Some(ref f) = cli.syslog_facility {
+                syslog_cfg.facility = f.clone();
+            }
+            if let Some(ref a) = cli.syslog_app_name {
+                syslog_cfg.app_name = a.clone();
+            }
+            service::logger::configure_syslog(&syslog_cfg);
+        } else if let Some(ref syslog_cfg) = cfg.syslog {
+            service::logger::configure_syslog(syslog_cfg);
+        }
+    } else if cli.syslog
+        || cli.syslog_server.is_some()
+        || cli.syslog_protocol.is_some()
+        || cli.syslog_facility.is_some()
+        || cli.syslog_app_name.is_some()
+    {
+        let syslog_cfg = config::SyslogConfig {
+            enabled: true,
+            server: cli
+                .syslog_server
+                .clone()
+                .unwrap_or_else(|| "127.0.0.1:514".to_string()),
+            protocol: cli
+                .syslog_protocol
+                .clone()
+                .unwrap_or_else(|| "udp".to_string()),
+            facility: cli
+                .syslog_facility
+                .clone()
+                .unwrap_or_else(|| "user".to_string()),
+            hostname: None,
+            app_name: cli
+                .syslog_app_name
+                .clone()
+                .unwrap_or_else(|| "rsipclient".to_string()),
+        };
+        service::logger::configure_syslog(&syslog_cfg);
+    }
+
     // --- Service mode ---
     if let Some(Command::Service { ctrl_port }) = cli.command {
         println!("Loading config: {}", cli.config);

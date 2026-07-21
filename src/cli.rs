@@ -22,6 +22,26 @@ pub struct Cli {
     #[arg(long, default_value_t = DEFAULT_CONTROL_PORT, global = true)]
     pub ctrl_port: u16,
 
+    /// Enable forwarding logs to Syslog server
+    #[arg(long, global = true)]
+    pub syslog: bool,
+
+    /// Syslog server host:port (e.g. 127.0.0.1:514)
+    #[arg(long, global = true)]
+    pub syslog_server: Option<String>,
+
+    /// Syslog transport protocol ("udp" or "tcp")
+    #[arg(long, global = true)]
+    pub syslog_protocol: Option<String>,
+
+    /// Syslog facility ("user", "local0", etc.)
+    #[arg(long, global = true)]
+    pub syslog_facility: Option<String>,
+
+    /// Syslog app name tag
+    #[arg(long, global = true)]
+    pub syslog_app_name: Option<String>,
+
     #[command(subcommand)]
     pub command: Option<Command>,
 }

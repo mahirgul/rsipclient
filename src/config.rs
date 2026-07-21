@@ -52,6 +52,53 @@ fn default_web_password() -> String {
     "admin".to_string()
 }
 
+/// Configuration for Syslog integration
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct SyslogConfig {
+    /// Enable sending logs to Syslog (default: true)
+    #[serde(default = "default_syslog_enabled")]
+    pub enabled: bool,
+
+    /// Syslog server host:port (default: "127.0.0.1:514")
+    #[serde(default = "default_syslog_server")]
+    pub server: String,
+
+    /// Transport protocol: "udp" or "tcp" (default: "udp")
+    #[serde(default = "default_syslog_protocol")]
+    pub protocol: String,
+
+    /// Syslog facility: "user", "local0".."local7", "daemon", etc. (default: "user")
+    #[serde(default = "default_syslog_facility")]
+    pub facility: String,
+
+    /// Optional custom hostname override
+    pub hostname: Option<String>,
+
+    /// Application name in syslog message (default: "rsipclient")
+    #[serde(default = "default_syslog_app_name")]
+    pub app_name: String,
+}
+
+fn default_syslog_enabled() -> bool {
+    true
+}
+
+fn default_syslog_server() -> String {
+    "127.0.0.1:514".to_string()
+}
+
+fn default_syslog_protocol() -> String {
+    "udp".to_string()
+}
+
+fn default_syslog_facility() -> String {
+    "user".to_string()
+}
+
+fn default_syslog_app_name() -> String {
+    "rsipclient".to_string()
+}
+
 /// Root config structure loaded from TOML file
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Config {
@@ -60,6 +107,9 @@ pub struct Config {
 
     /// Optional REST commands API settings
     pub commands_api: Option<CommandsApiConfig>,
+
+    /// Optional Syslog settings
+    pub syslog: Option<SyslogConfig>,
 
     /// List of SIP accounts
     pub accounts: Vec<Account>,
@@ -259,6 +309,16 @@ impl Config {
 
     /// Validate configuration
     fn validate(&self) -> anyhow::Result<()> {
+        if let Some(ref syslog) = self.syslog {
+            let p = syslog.protocol.to_lowercase();
+            if p != "udp" && p != "tcp" && p != "unix" {
+                anyhow::bail!(
+                    "Syslog protocol must be 'udp', 'tcp', or 'unix', got '{}'",
+                    syslog.protocol
+                );
+            }
+        }
+
         if self.accounts.is_empty() {
             anyhow::bail!("Config must contain at least one account");
         }

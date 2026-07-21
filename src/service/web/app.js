@@ -1,7 +1,4 @@
 let pollTimer = null;
-let cpuHistory = [];
-let ramHistory = [];
-const maxHistoryLength = 30;
 
 // Initialize application layout
 function initApp() {
@@ -15,6 +12,15 @@ function initApp() {
 
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app-layout').style.display = 'flex';
+
+    // Prevent browser autofill on dialer target input
+    const dialerInput = document.getElementById('dialer-target');
+    if (dialerInput) {
+        dialerInput.value = '';
+        dialerInput.addEventListener('input', () => {
+            dialerInput.dataset.userEdited = "true";
+        });
+    }
 
     // Start live status polling
     updateDashboard();
@@ -90,14 +96,9 @@ async function updateDashboard() {
         document.getElementById('stat-total-accounts').innerText = status.total_accounts;
         document.getElementById('stat-registered-accounts').innerText = status.registered_accounts;
         document.getElementById('stat-active-calls').innerText = status.active_calls;
-        document.getElementById('stat-cpu-percent').innerText = `${status.cpu_percent.toFixed(1)} %`;
 
         // Set diagnostics panel
         document.getElementById('diag-os').innerText = status.os_name;
-        const memMB = status.memory_bytes / (1024 * 1024);
-        document.getElementById('diag-mem').innerText = `${memMB.toFixed(1)} MB`;
-        document.getElementById('diag-cpu').innerText = `${status.cpu_percent.toFixed(1)} %`;
-        document.getElementById('uptime').innerText = `Uptime: ${formatDuration(status.uptime_secs)}`;
         if (status.config_path) {
             document.getElementById('diag-config-path').innerText = status.config_path;
         }
@@ -113,14 +114,6 @@ async function updateDashboard() {
                 footerVer.innerText = `v${status.app_version}`;
             }
         }
-
-        // Update utilization charts data
-        cpuHistory.push(status.cpu_percent);
-        ramHistory.push(memMB);
-        if (cpuHistory.length > maxHistoryLength) cpuHistory.shift();
-        if (ramHistory.length > maxHistoryLength) ramHistory.shift();
-        
-        drawResourceChart(status.cpu_percent, memMB);
 
         // Build SIP Bindings Table (Dashboard tab)
         const bindingsBody = document.getElementById('bindings-monitor-body');
@@ -212,39 +205,6 @@ async function updateDashboard() {
     } catch (err) {
         console.error("Poller error:", err);
     }
-}
-
-// Draw CPU and Memory sparkline in SVG
-function drawResourceChart(currCpu, currRam) {
-    document.getElementById('chart-cpu-val').innerText = `${currCpu.toFixed(1)}%`;
-    document.getElementById('chart-ram-val').innerText = `${currRam.toFixed(1)}MB`;
-
-    const svg = document.getElementById('resource-svg-chart');
-    if (!svg) return;
-    const width = svg.clientWidth || 300;
-    const height = svg.clientHeight || 120;
-
-    const buildPath = (history, maxVal) => {
-        if (history.length < 2) return "";
-        const dx = width / (maxHistoryLength - 1);
-        let points = [];
-        for (let i = 0; i < history.length; i++) {
-            const x = i * dx;
-            const normY = history[i] / (maxVal || 1);
-            const y = height - (normY * (height - 15) + 5);
-            points.push(`${x},${y}`);
-        }
-        
-        // Form closed path for nice fill gradient
-        const lastX = (history.length - 1) * dx;
-        return `M 0,${height} L ${points.join(' L ')} L ${lastX},${height} Z`;
-    };
-
-    // CPU Max is 100%, Memory max let's assume 256MB dynamically scaled
-    const maxRam = Math.max(...ramHistory, 64) * 1.2;
-    
-    document.getElementById('cpu-chart-path').setAttribute('d', buildPath(cpuHistory, 100));
-    document.getElementById('ram-chart-path').setAttribute('d', buildPath(ramHistory, maxRam));
 }
 
 // Fetch logs and write to console div

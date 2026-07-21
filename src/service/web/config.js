@@ -222,6 +222,20 @@ async function loadGlobalSettings() {
             document.getElementById('settings-cmd-pass').value = '';
         }
 
+        if (config.syslog) {
+            document.getElementById('settings-syslog-enabled').checked = config.syslog.enabled !== false;
+            document.getElementById('settings-syslog-server').value = config.syslog.server || '127.0.0.1:514';
+            document.getElementById('settings-syslog-protocol').value = config.syslog.protocol || 'udp';
+            document.getElementById('settings-syslog-facility').value = config.syslog.facility || 'user';
+            document.getElementById('settings-syslog-app-name').value = config.syslog.app_name || 'rsipclient';
+        } else {
+            document.getElementById('settings-syslog-enabled').checked = false;
+            document.getElementById('settings-syslog-server').value = '127.0.0.1:514';
+            document.getElementById('settings-syslog-protocol').value = 'udp';
+            document.getElementById('settings-syslog-facility').value = 'user';
+            document.getElementById('settings-syslog-app-name').value = 'rsipclient';
+        }
+
         // Fill raw config text area
         document.getElementById('settings-raw-config').value = JSON.stringify(config, null, 4);
     } catch (err) {
@@ -262,6 +276,23 @@ async function saveGlobalSettings() {
         } else {
             updatedConfig.commands_api = null;
         }
+
+        const syslogEnabled = document.getElementById('settings-syslog-enabled').checked;
+        const syslogServer = document.getElementById('settings-syslog-server').value || '127.0.0.1:514';
+        const syslogProtocol = document.getElementById('settings-syslog-protocol').value || 'udp';
+        const syslogFacility = document.getElementById('settings-syslog-facility').value || 'user';
+        const syslogAppName = document.getElementById('settings-syslog-app-name').value || 'rsipclient';
+
+        updatedConfig.syslog = {
+            enabled: syslogEnabled,
+            server: syslogServer,
+            protocol: syslogProtocol,
+            facility: syslogFacility,
+            hostname: (updatedConfig.syslog && updatedConfig.syslog.hostname) ? updatedConfig.syslog.hostname : null,
+            app_name: syslogAppName
+        };
+
+        document.getElementById('settings-raw-config').value = JSON.stringify(updatedConfig, null, 4);
 
         const res = await fetch(`${API_URL}/api/config`, {
             method: 'PUT',

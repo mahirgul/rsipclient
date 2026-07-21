@@ -4,7 +4,7 @@
   <a href="https://github.com/mahirgul/rsipclient/actions/workflows/ci.yml">
     <img src="https://img.shields.io/github/actions/workflow/status/mahirgul/rsipclient/ci.yml?branch=master&style=for-the-badge&logo=github-actions&logoColor=white&label=CI&color=2ea44f" alt="CI Status">
   </a>
-  <img src="https://img.shields.io/badge/Release-v2.1.0-blue?style=for-the-badge&logo=git&logoColor=white" alt="Release v2.1.0">
+  <img src="https://img.shields.io/badge/Release-v2.2.0-blue?style=for-the-badge&logo=git&logoColor=white" alt="Release v2.2.0">
   <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License">
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey?style=for-the-badge" alt="Windows, Linux & macOS">
 </p>
@@ -12,6 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.75%2B-orange?style=for-the-badge&logo=rust&logoColor=white" alt="Rust 1.75+">
   <img src="https://img.shields.io/badge/Axum-0.7%2B-009688?style=for-the-badge&logo=rust&logoColor=white" alt="Axum 0.7+">
+  <img src="https://img.shields.io/badge/Syslog-RFC%205424-blue?style=for-the-badge" alt="Syslog RFC 5424">
   <img src="https://img.shields.io/badge/Plugins-Rhai%20%2F%20Lua-33a3ff?style=for-the-badge&logo=lua&logoColor=white" alt="Rhai & Lua Plugins">
   <img src="https://img.shields.io/badge/Web%20Audio-JS-FFD21E?style=for-the-badge&logo=javascript&logoColor=black" alt="JS Web Audio">
 </p>
@@ -33,16 +34,12 @@ Place calls, play audio, detect DTMF, transfer callers, record voicemail, and co
 > [!NOTE]
 > 🌐 **Built-in Web Dashboard & REST API:** Configure your accounts, place calls, trigger DTMF, transfer calls, stream real-time logs, and even use your browser microphone/speakers as a **Web Softphone** (via WebSockets) directly through the modern web dashboard interface.
 > 
-> *New in v2.1.0:*
-> * 🧩 **Dual Scripting Engine (Rhai & Lua 5.4)** — Write custom IVR logic and event handlers using either `.rhai` (pure Rust) or `.lua` (standalone Lua 5.4) scripts in `plugins/`.
-> * 🌐 **HTTP Webhooks** — Asynchronously POST client events (`incoming_call`, `call_state`, `dtmf`, `registration`) and query dynamic IVR menu responses over HTTP REST.
-> * 🎛️ **Web UI Plugin Manager** — Dedicated tab to view, create, edit, test, and monitor `.rhai` and `.lua` scripts directly from the Web Dashboard.
-> * 🎧 **Hardware Sound Card Selection** — Select preferred hardware microphone and speaker sound card devices for each account in the Web UI, with live audio device switching during ongoing call audio sessions.
-> * 🎛️ **Visual IVR Flow Builder** — Design IVR menus, welcome greetings, digit timeouts, and DTMF-to-action bindings graphically in the Web UI.
-> * 📁 **Web Audio File Manager** — Upload, play, and delete WAV audio clips directly from the dashboard, or **Record WAV** clips from your microphone downsampled on-the-fly to mono 8kHz 16-bit PCM.
-> * 📊 **SIP Packet Tracer** — Real-time Wireshark-like SIP sequence flow visualizer. Click any message to inspect raw headers and SDP bodies.
-> * 📞 **Call History Logs** — Complete call logs capturing timestamps, directions, final states, and captured DTMF keypresses.
-> * 📈 **Live Resource Charts** — Smooth, animated real-time CPU and Memory utilization sparklines.
+> *New in v2.2.0:*
+> * 🪵 **Syslog Integration (RFC 5424)** — Support for forwarding logs to Syslog daemons over UDP, TCP, or Unix domain sockets (`/dev/log`).
+> * 🌐 **Web Dashboard Syslog Control** — Live Syslog configuration card in Global Settings with dynamic `PUT /api/config` reloading.
+> * 🎨 **Modern Dark Corporate Color Theme** — Modernized dashboard theme tailored with elegant deep navy, cyan accents, and crimson highlights.
+> * 🔒 **100% Self-Contained Offline Support** — Zero external fonts or JS/CSS network dependencies for isolated intranet environments.
+> * 🍓 **Raspberry Pi & Headless Linux Guide** — Detailed deployment guide for running in console mode with ALSA sound card support and systemd auto-start.
 > * ⚙️ **Plain TCP SIP Transport** — Validated plain TCP transport support alongside UDP and TLS.
 
 Ideal for:
@@ -249,9 +246,10 @@ ivr_default = "transfer:sip:operator@sip.example.com"
 | Hold | `hold` | Hold, press any DTMF to resume |
 | Hangup | `hangup` | End the call |
 
-## Configuration Reference
+## Configuration & Headless Guides
 
-See [docs/configuration.md](docs/configuration.md) for the full list of options.
+- **Configuration Reference**: See [docs/configuration.md](docs/configuration.md) for the full list of configuration options, Syslog settings, and audio devices.
+- **Raspberry Pi & Linux Headless Guide**: See [docs/raspberry-pi-headless.md](docs/raspberry-pi-headless.md) for ALSA sound card setup, systemd service auto-start, and console-mode deployment instructions.
 
 ### Per-account settings
 

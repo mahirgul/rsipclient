@@ -126,10 +126,6 @@ impl Service {
             }
         }
 
-        // Initialize sysinfo System once at startup for dashboard metrics
-        let mut sys = sysinfo::System::new_all();
-        sys.refresh_all();
-
         // Spawn Web Dashboard server
         let web_state = web_server::AppState {
             clients: self.clients.clone(),
@@ -138,8 +134,6 @@ impl Service {
             web_username: self.web_username.clone(),
             web_password: self.web_password.clone(),
             session_token: uuid::Uuid::new_v4().to_string(),
-            start_time: std::time::Instant::now(),
-            sys: Arc::new(Mutex::new(sys)),
             plugin_manager: self.plugin_manager.clone(),
         };
         let web_port = self.web_port;

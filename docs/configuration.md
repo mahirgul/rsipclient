@@ -52,6 +52,24 @@ name = "my-account"
 | `early_media` | bool | `true` | 183 Session Progress |
 | `session_timers` | bool | `false` | RFC 4028 |
 
+### Optional — Audio Hardware & Sound Cards
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `audio_input_device` | string | `"default"` | ALSA/Hardware microphone device |
+| `audio_output_device` | string | `"default"` | ALSA/Hardware speaker/headset device |
+
+### Optional — Syslog Logging
+
+```toml
+[syslog]
+enabled = true            # Enable Syslog forwarding
+server = "127.0.0.1:514"  # Host:port or "/dev/log" on Linux
+protocol = "udp"          # "udp", "tcp", or "unix"
+facility = "user"         # "user", "local0", "daemon", etc.
+app_name = "rsipclient"   # Application tag
+```
+
 ### Optional — IVR / Auto-Attendant
 
 | Field | Type | Default | Description |

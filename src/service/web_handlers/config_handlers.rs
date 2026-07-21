@@ -43,6 +43,11 @@ pub async fn put_config(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
+    // Dynamically update active Syslog sender settings
+    if let Some(ref syslog_cfg) = new_config.syslog {
+        crate::service::logger::configure_syslog(syslog_cfg);
+    }
+
     // Perform dynamic reload of all clients
     if let Err(e) = reload_all_clients(&state.clients, &new_config, &state.global_shutdown).await {
         log::error!("Failed to reload clients dynamically: {}", e);

@@ -20,16 +20,11 @@ pub struct AppState {
     pub web_username: String,
     pub web_password: String,
     pub session_token: String,
-    pub start_time: std::time::Instant,
-    pub sys: Arc<Mutex<sysinfo::System>>,
     pub plugin_manager: crate::plugins::PluginManager,
 }
 
 #[derive(serde::Serialize)]
 pub struct StatusResponse {
-    pub uptime_secs: u64,
-    pub memory_bytes: u64,
-    pub cpu_percent: f32,
     pub os_name: String,
     pub total_accounts: usize,
     pub registered_accounts: usize,
