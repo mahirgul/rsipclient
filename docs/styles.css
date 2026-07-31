@@ -153,6 +153,40 @@ body {
 .nav-actions {
   display: flex;
   gap: 0.75rem;
+  align-items: center;
+}
+
+/* Language Switcher */
+.lang-switcher {
+  display: flex;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.lang-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  transition: all 0.2s;
+}
+
+.lang-btn.active {
+  background: var(--accent-cyan);
+  color: #fff;
+}
+
+.lang-btn .flag {
+  font-size: 0.9rem;
 }
 
 /* Buttons */
