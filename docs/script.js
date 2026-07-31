@@ -2,6 +2,7 @@
 const translations = {
   en: {
     "nav.features": "Features",
+    "nav.architecture": "Architecture",
     "nav.dashboard": "Web Dashboard",
     "nav.quickstart": "Quick Start",
     "nav.docs": "Documentation",
@@ -11,6 +12,11 @@ const translations = {
     "hero.subtitle": "Multi-account SIP client with a built-in modern Web Dashboard, REST API, IVR Engine, Rhai & Lua plugin subsystem written in pure async Rust.",
     "hero.btnGetStarted": "Get Started",
     "hero.btnViewSource": "View Source",
+
+    "tech.binarySize": "Lightweight Release Binary",
+    "tech.zeroCopy": "Zero-Copy RTP Streaming",
+    "tech.syslog": "Standard Syslog Forwarding",
+    "tech.offline": "Offline Intranet Web UI",
 
     "features.titlePre": "Why",
     "features.subtitle": "A fast, reliable, and lightweight Telecom solution built in pure Rust without heavy frameworks or JVM dependencies.",
@@ -26,6 +32,9 @@ const translations = {
     "features.f5.desc": "Inspect SIP signaling flow sequence diagrams and forward real-time logs to central Syslog daemons.",
     "features.f6.title": "Single Binary & Pi Support",
     "features.f6.desc": "Lightweight ~2-3 MB executable. Runs seamlessly on Raspberry Pi and Headless Linux with zero external dependencies.",
+
+    "arch.titlePre": "Modular",
+    "arch.subtitle": "Designed from the ground up for low-latency asynchronous telecommunication and embedding into custom infrastructure.",
 
     "demo.titlePre": "Advanced",
     "demo.subtitle": "Control SIP registrations, call logs, live system metrics, and Syslog settings directly from your browser.",
@@ -57,6 +66,7 @@ const translations = {
 
   tr: {
     "nav.features": "Özellikler",
+    "nav.architecture": "Mimarisi",
     "nav.dashboard": "Web Dashboard",
     "nav.quickstart": "Hızlı Başlangıç",
     "nav.docs": "Dokümantasyon",
@@ -66,6 +76,11 @@ const translations = {
     "hero.subtitle": "Çoklu hesap desteği, dahili modern Web Dashboard, REST API, IVR Motoru, Rhai/Lua eklenti sistemi ve yüksek performanslı saf Rust mimarisi.",
     "hero.btnGetStarted": "Hemen Başlayın",
     "hero.btnViewSource": "Kaynak Kodu Gör",
+
+    "tech.binarySize": "Hafif Derlenmiş Binary",
+    "tech.zeroCopy": "Zero-Copy RTP Ses Akışı",
+    "tech.syslog": "Standart Syslog Aktarımı",
+    "tech.offline": "%100 Çevrimdışı Web UI",
 
     "features.titlePre": "Neden",
     "features.subtitle": "Ağır framework'ler ve JVM bağımlılıkları olmadan saf Rust ile yazılmış hızlı, güvenilir ve esnek Telekomünikasyon çözümü.",
@@ -81,6 +96,9 @@ const translations = {
     "features.f5.desc": "SIP paket izleyici ve RFC 5424 Syslog desteği ile canlı logları merkezi log sunucularına aktarın.",
     "features.f6.title": "Tek Binary & Pi Desteği",
     "features.f6.desc": "Sadece ~2-3 MB büyüklüğünde tek bir executable binary. Raspberry Pi ve Headless Linux sistemlerde sıfır bağımlılıkla çalışır.",
+
+    "arch.titlePre": "Modüler",
+    "arch.subtitle": "Düşük gecikmeli asenkron telekomünikasyon ve özel altyapılara kolay entegrasyon için sıfırdan tasarlandı.",
 
     "demo.titlePre": "Gelişmiş",
     "demo.subtitle": "Web arayüzünden SIP hesaplarınızı, çağrı kayıtlarınızı, canlı sistem istatistiklerini ve Syslog ayarlarını yönetin.",
@@ -104,7 +122,7 @@ const translations = {
     "docs.d2.title": "JSON TCP IPC Protokolü",
     "docs.d2.desc": "Herhangi bir dilden (Python, Node.js, Go) JSON formatında TCP üzerinden arama yapma ve IVR yönetimi.",
     "docs.d3.title": "Raspberry Pi & Headless Linux",
-    "docs.d3.desc": "ALSA ses kartı sürücüleri, systemd servis entegrasyonu ve konsol modunda çalıştırma kılavuzu.",
+    "docs.d3.desc": "ALSA sound card konfigürasyonu, systemd servis entegrasyonu ve konsol modunda çalıştırma kılavuzu.",
 
     "footer.aiDesc": "Antigravity, Gemini ve DeepSeek AI tarafından geliştirilen deneysel Ar-Ge projesi.",
     "footer.license": "MIT Lisansı ile Açık Kaynak. GitHub üzerinde yayınlandı."
@@ -115,15 +133,12 @@ const translations = {
 function setLanguage(lang) {
   if (!translations[lang]) return;
 
-  // Store in localStorage if available
   try {
     localStorage.setItem('rsip_lang', lang);
   } catch (e) {}
 
-  // Update HTML lang attribute
   document.documentElement.lang = lang;
 
-  // Update language buttons
   const btnEn = document.getElementById('lang-en');
   const btnTr = document.getElementById('lang-tr');
   if (btnEn && btnTr) {
@@ -131,7 +146,6 @@ function setLanguage(lang) {
     btnTr.classList.toggle('active', lang === 'tr');
   }
 
-  // Update all elements with data-i18n attribute
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.getAttribute('data-i18n');
     if (translations[lang][key]) {
@@ -140,7 +154,7 @@ function setLanguage(lang) {
   });
 }
 
-// Tab Switcher Functionality for Installation Instructions
+// Tab Switcher Functionality
 function switchTab(tabId) {
   const contents = document.querySelectorAll('.tab-content');
   contents.forEach(content => {
@@ -167,7 +181,6 @@ function switchTab(tabId) {
 
 // Initialize on DOM load
 document.addEventListener('DOMContentLoaded', () => {
-  // Check saved language or default to English ('en')
   let savedLang = 'en';
   try {
     const stored = localStorage.getItem('rsip_lang');

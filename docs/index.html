@@ -35,6 +35,7 @@
 
       <div class="nav-links">
         <a href="#features"><i class="fa-solid fa-star"></i> <span data-i18n="nav.features">Features</span></a>
+        <a href="#architecture"><i class="fa-solid fa-cubes"></i> <span data-i18n="nav.architecture">Architecture</span></a>
         <a href="#demo"><i class="fa-solid fa-desktop"></i> <span data-i18n="nav.dashboard">Web Dashboard</span></a>
         <a href="#quickstart"><i class="fa-solid fa-terminal"></i> <span data-i18n="nav.quickstart">Quick Start</span></a>
         <a href="#docs"><i class="fa-solid fa-book"></i> <span data-i18n="nav.docs">Documentation</span></a>
@@ -83,6 +84,7 @@
           <span class="hero-badge"><i class="fa-solid fa-bolt"></i> Axum 0.7+</span>
           <span class="hero-badge"><i class="fa-solid fa-shield-halved"></i> MIT License</span>
           <span class="hero-badge"><i class="fa-solid fa-network-wired"></i> SIP / SDP / RTP</span>
+          <span class="hero-badge"><i class="fa-solid fa-puzzle-piece"></i> Rhai & Lua Plugins</span>
         </div>
 
         <div class="hero-buttons">
@@ -103,10 +105,10 @@
               <span class="dot yellow"></span>
               <span class="dot green"></span>
             </div>
-            <div class="terminal-title">rsipclient v2.3.0 — Service Active</div>
+            <div class="terminal-title">rsipclient v2.3.0 — Core Engine</div>
           </div>
           <div class="terminal-body">
-            <div class="log-line"><span class="log-time">10:14:02</span> <span class="log-level info">INFO</span> rsipclient engine v2.3.0 initialized</div>
+            <div class="log-line"><span class="log-time">10:14:02</span> <span class="log-level info">INFO</span> rsipclient async engine v2.3.0 initialized</div>
             <div class="log-line"><span class="log-time">10:14:02</span> <span class="log-level info">INFO</span> Web Dashboard listening on <span class="log-highlight">http://127.0.0.1:8080</span></div>
             <div class="log-line"><span class="log-time">10:14:03</span> <span class="log-level success">OK</span> Registered SIP Account <span class="log-highlight">1001@sip.example.com</span> (UDP/5060)</div>
             <div class="log-line"><span class="log-time">10:14:05</span> <span class="log-level info">INFO</span> Syslog RFC 5424 streamer active (UDP -&gt; 127.0.0.1:514)</div>
@@ -119,6 +121,30 @@
       </div>
     </div>
   </header>
+
+  <!-- Key Technical Highlights (New Section based on Codebase Analysis) -->
+  <section class="section tech-highlights">
+    <div class="section-container">
+      <div class="highlights-grid">
+        <div class="highlight-item">
+          <div class="highlight-num">2 MB</div>
+          <div class="highlight-label" data-i18n="tech.binarySize">Lightweight Release Binary</div>
+        </div>
+        <div class="highlight-item">
+          <div class="highlight-num">0ms</div>
+          <div class="highlight-label" data-i18n="tech.zeroCopy">Zero-Copy RTP Streaming</div>
+        </div>
+        <div class="highlight-item">
+          <div class="highlight-num">RFC 5424</div>
+          <div class="highlight-label" data-i18n="tech.syslog">Standard Syslog Forwarding</div>
+        </div>
+        <div class="highlight-item">
+          <div class="highlight-num">100%</div>
+          <div class="highlight-label" data-i18n="tech.offline">Offline Intranet Web UI</div>
+        </div>
+      </div>
+    </div>
+  </section>
 
   <!-- Features Grid -->
   <section id="features" class="section">
@@ -168,8 +194,50 @@
     </div>
   </section>
 
+  <!-- Architecture & Stack Section (New Codebase Specific Section) -->
+  <section id="architecture" class="section section-dark">
+    <div class="section-container">
+      <div class="section-header">
+        <h2 class="section-title"><span data-i18n="arch.titlePre">Modular</span> <span class="gradient-text">Engine Architecture</span></h2>
+        <p class="section-subtitle" data-i18n="arch.subtitle">Designed from the ground up for low-latency asynchronous telecommunication and embedding into custom infrastructure.</p>
+      </div>
+
+      <div class="arch-grid">
+        <div class="arch-box">
+          <div class="arch-header"><i class="fa-solid fa-network-wired"></i> SIP Signaling Core</div>
+          <ul>
+            <li><strong>Transports:</strong> UDP, TCP, TLS (SIPS)</li>
+            <li><strong>SIP Methods:</strong> REGISTER, INVITE, BYE, CANCEL, ACK, REFER</li>
+            <li><strong>Auth & Timers:</strong> Digest MD5 (RFC 2617), Session Timers (RFC 4028)</li>
+            <li><strong>Headers:</strong> P-Asserted-Identity, P-Preferred-Identity (RFC 3325)</li>
+          </ul>
+        </div>
+
+        <div class="arch-box">
+          <div class="arch-header"><i class="fa-solid fa-wave-square"></i> Media & RTP Subsystem</div>
+          <ul>
+            <li><strong>Codecs:</strong> G.711 μ-law, A-law, Opus Audio Codec</li>
+            <li><strong>DTMF Engine:</strong> In-band RFC 2833 Telephone Events</li>
+            <li><strong>WAV Recorder:</strong> Mono 8kHz WAV recorder & audio manager</li>
+            <li><strong>Performance:</strong> Zero-copy async packet handling</li>
+          </ul>
+        </div>
+
+        <div class="arch-box">
+          <div class="arch-header"><i class="fa-solid fa-server"></i> Web Dashboard & Control IPC</div>
+          <ul>
+            <li><strong>Web Server:</strong> Axum 0.7 REST API + WebSockets</li>
+            <li><strong>JSON TCP IPC:</strong> Control service via raw TCP socket JSON packets</li>
+            <li><strong>Syslog:</strong> RFC 5424 UDP/TCP/Unix socket logger</li>
+            <li><strong>Plugins:</strong> Embedded Rhai & Lua runtime hooks</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- Interactive Dashboard Demo Section -->
-  <section id="demo" class="section section-dark">
+  <section id="demo" class="section">
     <div class="section-container">
       <div class="section-header">
         <h2 class="section-title"><span data-i18n="demo.titlePre">Advanced</span> <span class="gradient-text">Web Dashboard</span></h2>
@@ -234,7 +302,7 @@
   </section>
 
   <!-- Quickstart & Installation -->
-  <section id="quickstart" class="section">
+  <section id="quickstart" class="section section-dark">
     <div class="section-container">
       <div class="section-header">
         <h2 class="section-title"><span data-i18n="quickstart.titlePre">Quick</span> <span class="gradient-text">Installation & Usage</span></h2>
@@ -282,7 +350,7 @@ cargo build --release
   </section>
 
   <!-- Documentation Section -->
-  <section id="docs" class="section section-dark">
+  <section id="docs" class="section">
     <div class="section-container">
       <div class="section-header">
         <h2 class="section-title"><span data-i18n="docs.titlePre">Comprehensive</span> <span class="gradient-text">Documentation</span></h2>
@@ -293,7 +361,7 @@ cargo build --release
         <a href="https://github.com/mahirgul/rsipclient/blob/master/docs/configuration.md" target="_blank" class="doc-card">
           <div class="doc-icon"><i class="fa-solid fa-gear"></i></div>
           <h3 data-i18n="docs.d1.title">Configuration Guide</h3>
-          <p data-i18n="docs.d1.desc">Detailed <code>config.toml</code> parameters, SIP account definitions, TLS, and Syslog options.</p>
+          <p data-i18n="docs.d1.desc">Detailed config.toml parameters, SIP account definitions, TLS, and Syslog options.</p>
         </a>
 
         <a href="https://github.com/mahirgul/rsipclient/blob/master/docs/tcp-protocol.md" target="_blank" class="doc-card">
