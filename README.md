@@ -7,6 +7,9 @@
   <img src="https://img.shields.io/badge/Release-v2.3.0-blue?style=for-the-badge&logo=git&logoColor=white" alt="Release v2.3.0">
   <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License">
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey?style=for-the-badge" alt="Windows, Linux & macOS">
+  <a href="https://mahirgul.github.io/rsipclient/">
+    <img src="https://img.shields.io/badge/Website-Live%20Demo-008fd0?style=for-the-badge&logo=google-chrome&logoColor=white" alt="Live Website">
+  </a>
 </p>
 
 <p align="center">

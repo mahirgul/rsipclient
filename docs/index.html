@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>rsipclient — Rust SIP Client & IVR Engine</title>
+  <meta name="description" content="A multi-account SIP client with a built-in modern Web Dashboard, REST API, IVR Engine, and Plugin Subsystem written in pure async Rust." />
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- FontAwesome / Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Background Animation Grids & Glows -->
+  <div class="bg-glow bg-glow-1"></div>
+  <div class="bg-glow bg-glow-2"></div>
+  <div class="bg-grid"></div>
+
+  <!-- Navigation -->
+  <nav class="navbar">
+    <div class="nav-container">
+      <a href="#" class="brand">
+        <div class="brand-icon">
+          <i class="fa-solid fa-phone-volume"></i>
+        </div>
+        <span class="brand-name">rsipclient</span>
+        <span class="badge badge-version">v2.3.0</span>
+      </a>
+
+      <div class="nav-links">
+        <a href="#features"><i class="fa-solid fa-star"></i> Özellikler</a>
+        <a href="#demo"><i class="fa-solid fa-desktop"></i> Web Dashboard</a>
+        <a href="#quickstart"><i class="fa-solid fa-terminal"></i> Hızlı Başlangıç</a>
+        <a href="#docs"><i class="fa-solid fa-book"></i> Dokümantasyon</a>
+      </div>
+
+      <div class="nav-actions">
+        <a href="https://github.com/mahirgul/rsipclient" target="_blank" class="btn btn-secondary btn-sm">
+          <i class="fa-brands fa-github"></i> GitHub
+        </a>
+        <a href="#quickstart" class="btn btn-primary btn-sm">
+          <i class="fa-solid fa-download"></i> İndir
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <header class="hero">
+    <div class="hero-container">
+      <div class="hero-content">
+        <div class="ai-tag">
+          <i class="fa-solid fa-wand-magic-sparkles"></i> Antigravity & Gemini & DeepSeek AI Projesi
+        </div>
+        <h1 class="hero-title">
+          Modern, Async <span class="gradient-text">Rust SIP Client</span> & IVR Engine
+        </h1>
+        <p class="hero-subtitle">
+          Çoklu hesap desteği, dahili modern Web Dashboard, REST API, IVR Motoru, Rhai/Lua eklenti sistemi ve yüksek performanslı saf Rust mimarisi.
+        </p>
+
+        <div class="hero-badges">
+          <span class="hero-badge"><i class="fa-brands fa-rust"></i> Rust 1.75+</span>
+          <span class="hero-badge"><i class="fa-solid fa-bolt"></i> Axum 0.7+</span>
+          <span class="hero-badge"><i class="fa-solid fa-shield-halved"></i> MIT Lisans</span>
+          <span class="hero-badge"><i class="fa-solid fa-network-wired"></i> SIP / SDP / RTP</span>
+        </div>
+
+        <div class="hero-buttons">
+          <a href="#quickstart" class="btn btn-primary btn-lg">
+            <i class="fa-solid fa-rocket"></i> Hemen Başlayın
+          </a>
+          <a href="https://github.com/mahirgul/rsipclient" target="_blank" class="btn btn-outline btn-lg">
+            <i class="fa-brands fa-github"></i> Kaynak Kodu Gör
+          </a>
+        </div>
+      </div>
+
+      <div class="hero-preview">
+        <div class="terminal-card">
+          <div class="terminal-header">
+            <div class="terminal-dots">
+              <span class="dot red"></span>
+              <span class="dot yellow"></span>
+              <span class="dot green"></span>
+            </div>
+            <div class="terminal-title">rsipclient v2.3.0 — Service Active</div>
+          </div>
+          <div class="terminal-body">
+            <div class="log-line"><span class="log-time">10:14:02</span> <span class="log-level info">INFO</span> rsipclient engine v2.3.0 initialized</div>
+            <div class="log-line"><span class="log-time">10:14:02</span> <span class="log-level info">INFO</span> Web Dashboard listening on <span class="log-highlight">http://127.0.0.1:8080</span></div>
+            <div class="log-line"><span class="log-time">10:14:03</span> <span class="log-level success">OK</span> Registered SIP Account <span class="log-highlight">1001@sip.example.com</span> (UDP/5060)</div>
+            <div class="log-line"><span class="log-time">10:14:05</span> <span class="log-level info">INFO</span> Syslog RFC 5424 streamer active (UDP -&gt; 127.0.0.1:514)</div>
+            <div class="log-line"><span class="log-time">10:14:12</span> <span class="log-level call">CALL</span> Incoming INVITE from <span class="log-highlight">+905551234567</span> -&gt; IVR Engine Triggered</div>
+            <div class="log-line"><span class="log-time">10:14:13</span> <span class="log-level ivr">IVR</span> Playing welcome prompt: <span class="log-accent">welcome.wav</span></div>
+            <div class="log-line"><span class="log-time">10:14:18</span> <span class="log-level dtmf">DTMF</span> Received digit [<span class="log-accent">1</span>] -&gt; Transferring to Extension 1002 via REFER</div>
+            <div class="log-prompt"><span class="prompt-symbol">&gt;</span> <span class="typing-text">rsipclient --web-port 8080 --config config.toml</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Features Grid -->
+  <section id="features" class="section">
+    <div class="section-container">
+      <div class="section-header">
+        <h2 class="section-title">Neden <span class="gradient-text">rsipclient</span>?</h2>
+        <p class="section-subtitle">Ağır framework'ler ve JVM bağımlılıkları olmadan saf Rust ile yazılmış hızlı, güvenilir ve esnek Telekomünikasyon çözümü.</p>
+      </div>
+
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon"><i class="fa-solid fa-layer-group"></i></div>
+          <h3>Çoklu Hesap Desteği</h3>
+          <p>Aynı anda birden fazla SIP hesabını yönetin, bağımsız kayıt (REGISTER) ve çağrı akışlarını kontrol edin.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon"><i class="fa-solid fa-sliders"></i></div>
+          <h3>Görsel IVR Builder</h3>
+          <p>Karşılama sesleri, zaman aşımı kuralları ve DTMF tuş menü eylemlerini görsel olarak kolayca yapılandırın.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon"><i class="fa-solid fa-headset"></i></div>
+          <h3>Web Softphone & Audio</h3>
+          <p>WebSocket ve Web Audio API ile doğrudan tarayıcınızdan arama yapın, konuşun ve mikrofon sesinizi kaydedin.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon"><i class="fa-solid fa-puzzle-piece"></i></div>
+          <h3>Rhai & Lua Eklentileri</h3>
+          <p>Dahili Rhai ve Lua betik desteği sayesinde gelen ve giden çağrı senaryolarını anında özelleştirin.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon"><i class="fa-solid fa-file-waveform"></i></div>
+          <h3>Syslog (RFC 5424) & Tracer</h3>
+          <p>SIP paket izleyici ve RFC 5424 Syslog desteği ile canlı logları merkezi log sunucularına aktarın.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon"><i class="fa-solid fa-microchip"></i></div>
+          <h3>Tek Binary & Pi Desteği</h3>
+          <p>Sadece ~2-3 MB büyüklüğünde tek bir executable binary. Raspberry Pi ve Headless Linux sistemlerde sıfır bağımlılıkla çalışır.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Interactive Dashboard Demo Section -->
+  <section id="demo" class="section section-dark">
+    <div class="section-container">
+      <div class="section-header">
+        <h2 class="section-title">Gelişmiş <span class="gradient-text">Web Dashboard</span></h2>
+        <p class="section-subtitle">Web arayüzünden SIP hesaplarınızı, çağrı kayıtlarınızı, canlı sistem istatistiklerini ve Syslog ayarlarını yönetin.</p>
+      </div>
+
+      <div class="dashboard-mockup">
+        <div class="mockup-sidebar">
+          <div class="mockup-logo"><i class="fa-solid fa-phone-volume"></i> rsipclient UI</div>
+          <div class="mockup-menu">
+            <div class="menu-item active"><i class="fa-solid fa-gauge"></i> Dashboard</div>
+            <div class="menu-item"><i class="fa-solid fa-users"></i> SIP Hesapları</div>
+            <div class="menu-item"><i class="fa-solid fa-sitemap"></i> IVR Motoru</div>
+            <div class="menu-item"><i class="fa-solid fa-phone"></i> Softphone</div>
+            <div class="menu-item"><i class="fa-solid fa-scroll"></i> Loglar & Syslog</div>
+          </div>
+        </div>
+
+        <div class="mockup-content">
+          <div class="mockup-topbar">
+            <span class="status-indicator online"></span> Service Status: <strong>Online</strong> (SIP UDP: 5060)
+            <div class="topbar-right">
+              <span class="theme-toggle"><i class="fa-solid fa-moon"></i> Dark Mode</span>
+            </div>
+          </div>
+
+          <div class="mockup-cards">
+            <div class="mock-card">
+              <h4>Aktif Çağrılar</h4>
+              <div class="mock-val">2 Active</div>
+              <span class="mock-sub">Opus / G.711u Codec</span>
+            </div>
+            <div class="mock-card">
+              <h4>Kayıtlı SIP Hesapları</h4>
+              <div class="mock-val">3 / 3 Registered</div>
+              <span class="mock-sub">UDP & TCP Active</span>
+            </div>
+            <div class="mock-card">
+              <h4>CPU / RAM Kullanımı</h4>
+              <div class="mock-val">0.4% / 14.2 MB</div>
+              <span class="mock-sub">Pure Async Rust</span>
+            </div>
+          </div>
+
+          <div class="mockup-panel">
+            <h4>Live Call Control & Syslog Status</h4>
+            <div class="mock-table">
+              <div class="mock-tr mock-th">
+                <span>Account</span><span>Remote Peer</span><span>State</span><span>Codec</span><span>Action</span>
+              </div>
+              <div class="mock-tr">
+                <span>1001@sip.local</span><span>+905559876543</span><span class="status-tag active">CONNECTED</span><span>G.711u</span><span class="mock-btn danger"><i class="fa-solid fa-phone-slash"></i> Hangup</span>
+              </div>
+              <div class="mock-tr">
+                <span>1002@sip.local</span><span>IVR Attendant</span><span class="status-tag ivr">IVR PLAYING</span><span>Opus</span><span class="mock-btn warning"><i class="fa-solid fa-share"></i> Transfer</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quickstart & Installation -->
+  <section id="quickstart" class="section">
+    <div class="section-container">
+      <div class="section-header">
+        <h2 class="section-title">Hızlı <span class="gradient-text">Kurulum & Kullanım</span></h2>
+        <p class="section-subtitle">Saniyeler içinde rsipclient uygulamasını indirin ve tek komutla çalıştırın.</p>
+      </div>
+
+      <div class="code-tabs">
+        <div class="tab-buttons">
+          <button class="tab-btn active" onclick="switchTab('tab-powershell')"><i class="fa-brands fa-windows"></i> Windows (PowerShell)</button>
+          <button class="tab-btn" onclick="switchTab('tab-bash')"><i class="fa-brands fa-linux"></i> Linux / macOS</button>
+          <button class="tab-btn" onclick="switchTab('tab-cargo')"><i class="fa-brands fa-rust"></i> Cargo ile Derle</button>
+        </div>
+
+        <div class="tab-contents">
+          <div id="tab-powershell" class="tab-content active">
+            <pre><code># Otomatik indirme ve yükleme scripti
+irm https://raw.githubusercontent.com/mahirgul/rsipclient/master/install.ps1 | iex
+
+# rsipclient servisini başlatın (Web UI varsayılan 8080 portunda açılır)
+rsipclient --web-port 8080 --config config.toml</code></pre>
+          </div>
+
+          <div id="tab-bash" class="tab-content">
+            <pre><code># Linux / macOS otomatik kurulum scripti
+curl -proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/mahirgul/rsipclient/master/install.sh | sh
+
+# Servisi arka planda veya terminalde başlatın
+rsipclient --web-port 8080 --config config.toml</code></pre>
+          </div>
+
+          <div id="tab-cargo" class="tab-content">
+            <pre><code># Depoyu klonlayın
+git clone https://github.com/mahirgul/rsipclient.git
+cd rsipclient
+
+# Release modunda derleyin
+cargo build --release
+
+# Başlatın
+./target/release/rsipclient --web-port 8080</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Documentation Section -->
+  <section id="docs" class="section section-dark">
+    <div class="section-container">
+      <div class="section-header">
+        <h2 class="section-title">Kapsamlı <span class="gradient-text">Dokümantasyon</span></h2>
+        <p class="section-subtitle">Sistem mimarisi, TCP JSON kontrol protokolü ve Raspberry Pi rehberlerine göz atın.</p>
+      </div>
+
+      <div class="docs-grid">
+        <a href="https://github.com/mahirgul/rsipclient/blob/master/docs/configuration.md" target="_blank" class="doc-card">
+          <div class="doc-icon"><i class="fa-solid fa-gear"></i></div>
+          <h3>Konfigürasyon Rehberi</h3>
+          <p><code>config.toml</code> detaylı parametreleri, SIP hesap tanımlamaları ve TLS/Syslog seçenekleri.</p>
+        </a>
+
+        <a href="https://github.com/mahirgul/rsipclient/blob/master/docs/tcp-protocol.md" target="_blank" class="doc-card">
+          <div class="doc-icon"><i class="fa-solid fa-code"></i></div>
+          <h3>JSON TCP IPC Protokolü</h3>
+          <p>Herhangi bir dilden (Python, Node.js, Go) JSON formatında TCP üzerinden arama yapma ve IVR yönetimi.</p>
+        </a>
+
+        <a href="https://github.com/mahirgul/rsipclient/blob/master/docs/raspberry-pi-headless.md" target="_blank" class="doc-card">
+          <div class="doc-icon"><i class="fa-brands fa-raspberry-pi"></i></div>
+          <h3>Raspberry Pi & Headless Linux</h3>
+          <p>ALSA ses kartı sürücüleri, systemd servis entegrasyonu ve konsol modunda çalıştırma kılavuzu.</p>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-container">
+      <div class="footer-left">
+        <div class="brand">
+          <i class="fa-solid fa-phone-volume"></i> <strong>rsipclient</strong>
+        </div>
+        <p>Experimental AI-Generated R&D Project by Antigravity, Gemini & DeepSeek.</p>
+      </div>
+
+      <div class="footer-right">
+        <p>Open Source under MIT License. Released on GitHub.</p>
+        <a href="https://github.com/mahirgul/rsipclient" target="_blank" class="btn btn-secondary btn-sm">
+          <i class="fa-brands fa-github"></i> GitHub Repository
+        </a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
