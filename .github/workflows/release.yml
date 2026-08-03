@@ -109,3 +109,16 @@ jobs:
 
       - name: Publish
         run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
+
+  winget-publish:
+    name: Publish to WinGet
+    runs-on: ubuntu-latest
+    needs: [publish-release]
+    if: github.ref_type == 'tag' && (!contains(github.ref_name, '-'))
+    steps:
+      - name: Submit package to WinGet
+        uses: vedantmgoyal2009/winget-releaser@v2
+        with:
+          identifier: MahirGul.rsipclient
+          token: ${{ secrets.WINGET_TOKEN }}
+
