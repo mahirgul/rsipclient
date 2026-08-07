@@ -20,6 +20,7 @@ mod plugins;
 mod rtp;
 mod service;
 mod sip;
+mod win32_gui;
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -105,6 +106,11 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    // --- GUI mode ---
+    if let Some(Command::Gui) = cli.command {
+        return win32_gui::run_gui(cli.config.clone(), cli.ctrl_port).await;
+    }
+
     // --- Offline list ---
     if let Some(Command::List) = cli.command {
         let cfg = Config::load(&cli.config)?;
@@ -136,10 +142,22 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    // --- Default mode when no subcommand is specified ---
+    if cli.command.is_none() {
+        #[cfg(windows)]
+        {
+            return win32_gui::run_gui(cli.config.clone(), cli.ctrl_port).await;
+        }
+        #[cfg(not(windows))]
+        {
+            Cli::parse_from(["", "--help"]);
+            return Ok(());
+        }
+    }
+
     // --- IPC mode (register, call, hangup, cancel, status, shutdown, play) ---
     let Some(ref cmd) = cli.command else {
-        Cli::parse_from(["", "--help"]);
-        return Ok(());
+        unreachable!();
     };
 
     let (cmd_str, account, target_opt) = match cmd {

@@ -1690,6 +1690,7 @@ dependencies = [
  "tokio-native-tls",
  "toml",
  "uuid",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

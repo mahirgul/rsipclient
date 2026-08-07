@@ -55,6 +55,10 @@ pub enum Command {
         ctrl_port: u16,
     },
 
+    /// Launch classic Windows Win32 Desktop Softphone GUI
+    Gui,
+
+
     /// Register an account with its SIP server
     Register,
 

@@ -41,7 +41,7 @@ Place calls, play audio, detect DTMF, transfer callers, record voicemail, and co
 > [!NOTE]
 > 🌐 **Built-in Web Dashboard & REST API:** Configure your accounts, place calls, trigger DTMF, transfer calls, stream real-time logs, and even use your browser microphone/speakers as a **Web Softphone** (via WebSockets) directly through the modern web dashboard interface.
 > 
-> *New in v2.3.0:*
+> * 🖥️ **Classic Windows GUI (Win32)** — Double click `sip-client.exe` directly on Windows to open a native desktop softphone window with classic dialpad, account selector, call controls, and real-time logs!
 > * 🌓 **Dark & Light Mode Switcher** — Live UI theme switcher supporting both Dark slate and Light cool-gray visual modes.
 > * 🎨 **Custom Brand Palette** — Handcrafted color palette featuring `#008fd0`, `#008ecf`, `#f0f3f4`, `#444444`, and `#373e4a`.
 > * 🪵 **Syslog Integration (RFC 5424)** — Support for forwarding logs to Syslog daemons over UDP, TCP, or Unix domain sockets (`/dev/log`).
