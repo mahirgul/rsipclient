@@ -42,22 +42,6 @@
       </div>
 
       <div class="nav-actions">
-        <!-- Language Switcher -->
-        <div class="lang-switcher">
-          <button class="lang-btn active" id="lang-en" onclick="setLanguage('en')">
-            <span class="flag">🇺🇸</span> EN
-          </button>
-          <button class="lang-btn" id="lang-tr" onclick="setLanguage('tr')">
-            <span class="flag">🇹🇷</span> TR
-          </button>
-        </div>
-
-        <a href="https://mhrgl.com" target="_blank" class="btn btn-outline btn-sm">
-          <i class="fa-solid fa-globe"></i> mhrgl.com
-        </a>
-        <a href="https://github.com/mahirgul/rsipclient" target="_blank" class="btn btn-secondary btn-sm">
-          <i class="fa-brands fa-github"></i> GitHub
-        </a>
         <a href="#quickstart" class="btn btn-primary btn-sm">
           <i class="fa-solid fa-download"></i> <span data-i18n="nav.download">Download</span>
         </a>
@@ -402,6 +386,35 @@ cargo build --release
       </div>
     </div>
   </footer>
+
+  <!-- Fixed Bottom Bar / Sticky Footer -->
+  <div class="fixed-footer-bar">
+    <div class="fixed-footer-container">
+      <div class="fixed-footer-left">
+        <span class="fixed-footer-brand"><i class="fa-solid fa-phone-volume"></i> <strong>rsipclient</strong></span>
+        <span class="fixed-footer-desc" data-i18n="footer.aiDesc">Experimental AI-Generated R&amp;D Project by Antigravity, Gemini &amp; DeepSeek.</span>
+      </div>
+
+      <div class="fixed-footer-actions">
+        <!-- Language Switcher -->
+        <div class="lang-switcher">
+          <button class="lang-btn active" id="lang-en" onclick="setLanguage('en')">
+            <span class="flag">🇺🇸</span> EN
+          </button>
+          <button class="lang-btn" id="lang-tr" onclick="setLanguage('tr')">
+            <span class="flag">🇹🇷</span> TR
+          </button>
+        </div>
+
+        <a href="https://mhrgl.com" target="_blank" class="btn btn-outline btn-sm">
+          <i class="fa-solid fa-globe"></i> mhrgl.com
+        </a>
+        <a href="https://github.com/mahirgul/rsipclient" target="_blank" class="btn btn-secondary btn-sm">
+          <i class="fa-brands fa-github"></i> GitHub
+        </a>
+      </div>
+    </div>
+  </div>
 
   <script src="script.js"></script>
 </body>
