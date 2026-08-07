@@ -16,11 +16,11 @@ if (!(Test-Path $binDir)) {
     New-Item -ItemType Directory -Path $binDir -Force | Out-Null
 }
 
-$binaryName = "sip-client.exe"
+$binaryName = "rsipclient.exe"
 $destPath = Join-Path $binDir $binaryName
 
 # Download URL
-$url = "https://github.com/mahirgul/rsipclient/releases/latest/download/sip-client-windows-$arch.exe"
+$url = "https://github.com/mahirgul/rsipclient/releases/latest/download/rsipclient-windows-$arch.exe"
 
 Write-Host "Downloading pre-compiled binary from $url..." -ForegroundColor Yellow
 
@@ -74,16 +74,16 @@ Write-Host "=========================================" -ForegroundColor Green
 Write-Host "Config Path: $configPath" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "To run the client in service mode manually:" -ForegroundColor Cyan
-Write-Host "  sip-client -c `"$configPath`" service"
+Write-Host "  rsipclient -c `"$configPath`" service"
 Write-Host ""
 Write-Host "To install and run rsipclient as a Windows Service:" -ForegroundColor Cyan
 Write-Host "1. Download NSSM (Non-Sucking Service Manager) from https://nssm.cc/"
 Write-Host "2. Run the following command in an Administrator command prompt:"
-Write-Host "     nssm install rsipclient `"$binDir\sip-client.exe`" -c `"$configPath`" service"
+Write-Host "     nssm install rsipclient `"$binDir\rsipclient.exe`" -c `"$configPath`" service"
 Write-Host "3. Start the service:"
 Write-Host "     nssm start rsipclient"
 Write-Host ""
 Write-Host "Alternatively, to run in background via Task Scheduler (without NSSM):" -ForegroundColor Cyan
 Write-Host "  Register a basic Task Scheduler job that triggers on startup and executes:"
-Write-Host "  `"$binDir\sip-client.exe`" with arguments `"-c `"$configPath`" service`""
+Write-Host "  `"$binDir\rsipclient.exe`" with arguments `"-c `"$configPath`" service`""
 Write-Host "=========================================" -ForegroundColor Green

@@ -35,14 +35,14 @@ case "$ARCH" in
         ;;
 esac
 
-BINARY_NAME="sip-client-${OS_NAME}-${ARCH_NAME}"
+BINARY_NAME="rsipclient-${OS_NAME}-${ARCH_NAME}"
 URL="https://github.com/mahirgul/rsipclient/releases/latest/download/${BINARY_NAME}"
 INSTALL_DIR="$HOME/.rsipclient/bin"
 mkdir -p "$INSTALL_DIR"
 
 echo "Downloading ${BINARY_NAME} from ${URL}..."
-curl -H "Cache-Control: no-cache" -L -o "$INSTALL_DIR/sip-client" "${URL}"
-chmod +x "$INSTALL_DIR/sip-client"
+curl -H "Cache-Control: no-cache" -L -o "$INSTALL_DIR/rsipclient" "${URL}"
+chmod +x "$INSTALL_DIR/rsipclient"
 
 # Create a basic config.toml if not exists
 CONFIG_PATH="$HOME/.rsipclient/config.toml"
@@ -77,12 +77,12 @@ fi
 echo ""
 echo "========================================="
 echo " rsipclient successfully installed to:"
-echo "   $INSTALL_DIR/sip-client"
+echo "   $INSTALL_DIR/rsipclient"
 echo "========================================="
 echo "Config Path: $CONFIG_PATH"
 echo ""
 echo "To run the client in service mode manually:"
-echo "  $INSTALL_DIR/sip-client -c $CONFIG_PATH service"
+echo "  $INSTALL_DIR/rsipclient -c $CONFIG_PATH service"
 echo ""
 if [ "$OS_NAME" = "linux" ]; then
     echo "To install and run rsipclient as a systemd service:"
@@ -95,7 +95,7 @@ if [ "$OS_NAME" = "linux" ]; then
     echo ""
     echo "   [Service]"
     echo "   Type=simple"
-    echo "   ExecStart=$INSTALL_DIR/sip-client -c $CONFIG_PATH service"
+    echo "   ExecStart=$INSTALL_DIR/rsipclient -c $CONFIG_PATH service"
     echo "   Restart=on-failure"
     echo "   User=$(whoami)"
     echo ""

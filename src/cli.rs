@@ -4,7 +4,7 @@ use crate::ipc::DEFAULT_CONTROL_PORT;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "sip-client", version = env!("CARGO_PKG_VERSION"))]
+#[command(name = "rsipclient", version = env!("CARGO_PKG_VERSION"))]
 pub struct Cli {
     /// Path to TOML config file
     #[arg(short = 'c', long, default_value = "config.toml", global = true)]

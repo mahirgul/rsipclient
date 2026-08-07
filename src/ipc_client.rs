@@ -11,7 +11,7 @@ use tokio::net::TcpStream;
 pub async fn send_ipc(req: &Request, ctrl_port: u16) -> Result<Response> {
     let addr = format!("127.0.0.1:{}", ctrl_port);
     let stream = TcpStream::connect(&addr).await.context(format!(
-        "Cannot connect to service on {}. Is the service running? (start with: sip-client service)",
+        "Cannot connect to service on {}. Is the service running? (start with: rsipclient service)",
         addr
     ))?;
 
