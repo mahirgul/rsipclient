@@ -947,3 +947,48 @@ pre {
   }
 }
 
+/* Disclaimer Card */
+.disclaimer-card {
+  background: var(--bg-card);
+  border: 1px solid rgba(210, 153, 34, 0.4);
+  border-left: 4px solid var(--warning);
+  border-radius: 10px;
+  padding: 1.5rem 2rem;
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+  margin-top: 1rem;
+}
+
+.disclaimer-icon {
+  font-size: 1.75rem;
+  color: var(--warning);
+  flex-shrink: 0;
+  margin-top: 0.2rem;
+}
+
+.disclaimer-content h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.disclaimer-content p {
+  font-size: 0.92rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  margin-bottom: 0.5rem;
+}
+
+.disclaimer-content p.disclaimer-warning {
+  font-size: 0.88rem;
+  color: #d29922;
+  margin-bottom: 0;
+  background: rgba(210, 153, 34, 0.08);
+  padding: 0.65rem 0.85rem;
+  border-radius: 6px;
+  border: 1px dashed rgba(210, 153, 34, 0.3);
+}
+
+

@@ -132,3 +132,14 @@ ivr_timeout = 10
 
 ivr_default = "transfer:sip:operator@pbx.company.com"
 ```
+
+---
+
+## License & Disclaimer
+
+> 🤖 **AI Project Notice:** This software was developed using Artificial Intelligence (AI) assistants (**Antigravity**, **Gemini**, **DeepSeek**).
+> 
+> 📜 **MIT License:** Published under the open-source [MIT License](../LICENSE).
+> 
+> ⚠️ **Disclaimer of Liability:** THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED. THE AUTHORS AND CONTRIBUTORS ACCEPT NO RESPONSIBILITY OR LIABILITY FOR ANY CLAIMS, DAMAGES, SYSTEM FAILURES, OR LOSSES ARISING FROM THE USE OF THIS SOFTWARE.
+

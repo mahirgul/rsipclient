@@ -28,7 +28,11 @@
 </p>
 
 > [!IMPORTANT]
-> 🔬 **EXPERIMENTAL AI-GENERATED PROJECT:** This project is an experimental research and development effort collaboratively created by **Antigravity (Advanced AI Coding Assistant)**, **Gemini**, and **DeepSeek**. It is generated using artificial intelligence and is not intended for high-security or mission-critical production environments without thorough code audits and security hardening.
+> 🤖 **AI-DEVELOPED PROJECT NOTICE & DISCLAIMER OF LIABILITY:**
+> This software is an experimental research and development project created using Artificial Intelligence (AI) tools (**Antigravity**, **Gemini**, and **DeepSeek**).
+> 
+> * 📜 **MIT License:** Released open-source under the [MIT License](LICENSE).
+> * ⚠️ **Disclaimer of Liability:** THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED. THE AUTHORS, MAINTAINERS, AND CONTRIBUTORS ACCEPT NO RESPONSIBILITY OR LIABILITY FOR ANY DIRECT, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL DAMAGES, SECURITY BREACHES, SYSTEM FAILURES, OR LOSSES RESULTING FROM THE USE OR MISUSE OF THIS SOFTWARE. USE AT YOUR OWN RISK.
 
 **A multi-account SIP client with a built-in modern Web Dashboard, REST API, IVR Engine, and Plugin Subsystem, written in pure async Rust.**
 
@@ -327,9 +331,11 @@ src/
     └── web_handlers.rs Web API handlers
 ```
 
-## License
+## License & Disclaimer
 
-MIT — see [LICENSE](LICENSE) for details.
+- 📜 **MIT License:** Open-source software licensed under the [MIT License](LICENSE).
+- 🤖 **AI Development Notice:** This project is developed with Artificial Intelligence (AI) assistance (**Antigravity**, **Gemini**, **DeepSeek**).
+- ⚠️ **Disclaimer of Liability:** THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED. THE AUTHORS, DEVELOPERS, AND CONTRIBUTORS ACCEPT NO RESPONSIBILITY OR LIABILITY FOR ANY DIRECT, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL DAMAGES, SECURITY BREACHES, SYSTEM FAILURES, OR DATA LOSS RESULTING FROM THE USE OR MISUSE OF THIS SOFTWARE.
 
 ## Contributing
 

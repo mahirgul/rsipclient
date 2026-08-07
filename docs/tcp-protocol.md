@@ -127,3 +127,14 @@ echo '{"cmd":"register","account":"alice"}' | nc 127.0.0.1 5090
 echo '{"cmd":"call","account":"alice","target":"sip:bob@example.com"}' | nc 127.0.0.1 5090
 echo '{"cmd":"shutdown"}' | nc 127.0.0.1 5090
 ```
+
+---
+
+## License & Disclaimer
+
+> 🤖 **AI Project Notice:** This software was developed using Artificial Intelligence (AI) assistants (**Antigravity**, **Gemini**, **DeepSeek**).
+> 
+> 📜 **MIT License:** Published under the open-source [MIT License](../LICENSE).
+> 
+> ⚠️ **Disclaimer of Liability:** THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED. THE AUTHORS AND CONTRIBUTORS ACCEPT NO RESPONSIBILITY OR LIABILITY FOR ANY CLAIMS, DAMAGES, SYSTEM FAILURES, OR LOSSES ARISING FROM THE USE OF THIS SOFTWARE.
+

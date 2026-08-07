@@ -6,6 +6,7 @@ const translations = {
     "nav.dashboard": "Web Dashboard",
     "nav.quickstart": "Quick Start",
     "nav.docs": "Documentation",
+    "nav.license": "License & Disclaimer",
     "nav.download": "Download",
 
     "hero.aiTag": "Antigravity & Gemini & DeepSeek AI Project",
@@ -60,8 +61,11 @@ const translations = {
     "docs.d3.title": "Raspberry Pi & Headless Linux",
     "docs.d3.desc": "ALSA sound card configuration, systemd service setup, and headless console operation guide.",
 
-    "footer.aiDesc": "Experimental AI-Generated R&D Project by Antigravity, Gemini & DeepSeek.",
-    "footer.license": "Open Source under MIT License. Released on GitHub."
+    "footer.aiDesc": "Experimental AI-Generated Project developed with Antigravity, Gemini & DeepSeek.",
+    "footer.license": "Open Source under MIT License. Provided AS-IS with no warranty or liability.",
+    "disclaimer.title": "AI Project Notice, MIT License & Disclaimer",
+    "disclaimer.text": "rsipclient is an experimental telecommunications software developed using Artificial Intelligence (AI) tooling (Antigravity, Gemini & DeepSeek) and published open-source under the MIT License.",
+    "disclaimer.liability": "Disclaimer of Liability: THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED. THE AUTHORS AND CONTRIBUTORS ACCEPT NO RESPONSIBILITY OR LIABILITY FOR ANY DIRECT, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL DAMAGES, SYSTEM FAILURES, SECURITY BREACHES, OR LOSSES ARISING FROM THE USE OF THIS SOFTWARE."
   },
 
   tr: {
@@ -70,6 +74,7 @@ const translations = {
     "nav.dashboard": "Web Dashboard",
     "nav.quickstart": "Hızlı Başlangıç",
     "nav.docs": "Dokümantasyon",
+    "nav.license": "Lisans & Sorumluluk Reddi",
     "nav.download": "İndir",
 
     "hero.aiTag": "Antigravity & Gemini & DeepSeek AI Projesi",
@@ -124,8 +129,11 @@ const translations = {
     "docs.d3.title": "Raspberry Pi & Headless Linux",
     "docs.d3.desc": "ALSA sound card konfigürasyonu, systemd servis entegrasyonu ve konsol modunda çalıştırma kılavuzu.",
 
-    "footer.aiDesc": "Antigravity, Gemini ve DeepSeek AI tarafından geliştirilen deneysel Ar-Ge projesi.",
-    "footer.license": "MIT Lisansı ile Açık Kaynak. GitHub üzerinde yayınlandı."
+    "footer.aiDesc": "Antigravity, Gemini ve DeepSeek AI ile geliştirilmiş deneysel Ar-Ge projesi.",
+    "footer.license": "MIT Lisansı ile Açık Kaynak. Hiçbir garanti veya sorumluluk kabul edilmez.",
+    "disclaimer.title": "Yapay Zeka (AI) Bildirimi, MIT Lisansı ve Sorumluluk Reddi",
+    "disclaimer.text": "rsipclient, Yapay Zeka (AI) araçları (Antigravity, Gemini ve DeepSeek) kullanılarak geliştirilmiş deneysel bir telekomünikasyon projesidir ve açık kaynak MIT Lisansı altında yayınlanmıştır.",
+    "disclaimer.liability": "Sorumluluk Reddi (Disclaimer): YAZILIM \"OLDUĞU GİBİ\" (AS IS) SUNULMAKTADIR. HİÇBİR TÜRDE GARANTİ VERİLMEMEKTE OLUP, YAZARLAR VE KATKIDA BULUNANLAR BU YAZILIMIN KULLANIMINDAN VEYA KULLANILAMAMASINDAN DOĞABİLECEK DOĞRUDAN, DOLAYLI, ZARAR VEYA KAYIPLARDAN HİÇBİR ŞEKİLDE SORUMLULUK KABUL ETMEMEKTEDİR."
   }
 };
 
