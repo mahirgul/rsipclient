@@ -191,6 +191,7 @@ mod windows_impl {
         let (tx, rx) = channel::<GuiAction>();
         let accounts: Vec<String> = cfg.accounts.iter().map(|a| a.name.clone()).collect();
         let port = ctrl_port;
+        let web_port = cfg.web_port();
 
         std::thread::spawn(move || {
             unsafe {
@@ -355,8 +356,9 @@ mod windows_impl {
                 HWND_LOG = hwnd_log;
                 SendMessageW(hwnd_log, WM_SETFONT, h_font as usize, 1);
 
+                let web_url = format!("http://127.0.0.1:{}", web_port);
                 append_log("rsipclient Classic Win32 GUI initialized.");
-                append_log("Engine mode: Embedded SIP Service + Web Dashboard + JSON IPC.");
+                append_log(&format!("Engine mode: Embedded SIP Service + Web Dashboard ({}) + JSON IPC.", web_url));
 
                 GLOBAL_TX = Some(tx);
 
@@ -460,9 +462,10 @@ mod windows_impl {
                     handle_ipc_response(resp, "Play WAV");
                 }
                 GuiAction::OpenWeb => {
-                    append_log("Opening Web Dashboard (http://127.0.0.1:8080) in browser...");
+                    let web_url = format!("http://127.0.0.1:{}", web_port);
+                    append_log(&format!("Opening Web Dashboard ({}) in browser...", web_url));
                     let _ = std::process::Command::new("cmd")
-                        .args(["/C", "start", "http://127.0.0.1:8080"])
+                        .args(["/C", "start", &web_url])
                         .spawn();
                 }
             }

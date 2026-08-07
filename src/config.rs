@@ -292,6 +292,21 @@ fn default_ivr_timeout() -> Option<u64> {
 // ── Validation ───────────────────────────────────────────
 
 impl Config {
+    /// Get configured web server port, defaulting to 9090 if unspecified
+    pub fn web_port(&self) -> u16 {
+        self.web.as_ref().map(|w| w.port).unwrap_or(9090)
+    }
+
+    /// Get configured web server username, defaulting to "admin" if unspecified
+    pub fn web_username(&self) -> &str {
+        self.web.as_ref().map(|w| w.username.as_str()).unwrap_or("admin")
+    }
+
+    /// Get configured web server password, defaulting to "admin" if unspecified
+    pub fn web_password(&self) -> &str {
+        self.web.as_ref().map(|w| w.password.as_str()).unwrap_or("admin")
+    }
+
     /// Load configuration from a TOML file
     pub fn load(path: &str) -> anyhow::Result<Self> {
         let content = fs::read_to_string(path)?;

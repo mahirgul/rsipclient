@@ -61,11 +61,9 @@ impl Service {
             }
         }
 
-        let (web_port, web_username, web_password) = if let Some(ref web) = config.web {
-            (web.port, web.username.clone(), web.password.clone())
-        } else {
-            (9090, "admin".to_string(), "admin".to_string())
-        };
+        let web_port = config.web_port();
+        let web_username = config.web_username().to_string();
+        let web_password = config.web_password().to_string();
 
         let (commands_port, commands_username, commands_password) =
             if let Some(ref cmd_api) = config.commands_api {
@@ -107,8 +105,8 @@ impl Service {
         let shutdown = self.global_shutdown.clone();
 
         println!(
-            "Service running on {} (control port {})",
-            bind_addr, self.control_port
+            "Service running on {} (control port: {}, Web Dashboard: http://127.0.0.1:{})",
+            bind_addr, self.control_port, self.web_port
         );
 
         // Spawn watchers for each account
