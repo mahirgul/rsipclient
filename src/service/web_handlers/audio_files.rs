@@ -20,6 +20,39 @@ pub struct WavFile {
     pub channels: u16,
 }
 
+/// Build a `Content-Disposition` value that is safe to put in a header.
+///
+/// Filenames may legitimately contain non-ASCII characters (e.g. `kayıt.wav`),
+/// but `HeaderValue` only accepts visible ASCII — formatting the raw name into
+/// the header used to panic. Emit an ASCII-sanitized `filename=` plus an
+/// RFC 5987 `filename*=UTF-8''…` parameter carrying the real name.
+fn content_disposition(name: &str) -> String {
+    let ascii_fallback: String = name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+
+    let mut encoded = String::with_capacity(name.len());
+    for &b in name.as_bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_' | b'~') {
+            encoded.push(b as char);
+        } else {
+            encoded.push_str(&format!("%{:02X}", b));
+        }
+    }
+
+    format!(
+        "inline; filename=\"{}\"; filename*=UTF-8''{}",
+        ascii_fallback, encoded
+    )
+}
+
 fn validate_filename(name: &str) -> bool {
     !name.is_empty()
         && !name.contains('/')
@@ -135,10 +168,14 @@ pub async fn download_audio_file(
     };
 
     let mut response_headers = HeaderMap::new();
-    response_headers.insert(header::CONTENT_TYPE, content_type.parse().unwrap());
+    response_headers.insert(
+        header::CONTENT_TYPE,
+        header::HeaderValue::from_static(content_type),
+    );
     response_headers.insert(
         header::CONTENT_DISPOSITION,
-        format!("inline; filename=\"{}\"", name).parse().unwrap(),
+        header::HeaderValue::from_str(&content_disposition(&name))
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
     );
 
     Ok((response_headers, data))
@@ -165,4 +202,56 @@ pub async fn delete_audio_file(
     log::info!("Deleted audio file: {}", name);
 
     Ok(Json(serde_json::json!({ "success": true })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::HeaderValue;
+
+    #[test]
+    fn validate_filename_rejects_traversal_and_control_chars() {
+        assert!(validate_filename("greeting.wav"));
+        assert!(validate_filename("kayıt.wav"));
+        assert!(!validate_filename("../etc/passwd.wav"));
+        assert!(!validate_filename("dir/greeting.wav"));
+        assert!(!validate_filename("dir\\greeting.wav"));
+        assert!(!validate_filename("bad\r\nname.wav"));
+        assert!(!validate_filename("notaudio.txt"));
+        assert!(!validate_filename(""));
+    }
+
+    /// Non-ASCII filenames are valid on disk but are not valid header bytes;
+    /// building the header from the raw name used to panic on unwrap.
+    #[test]
+    fn content_disposition_is_a_valid_header_value_for_non_ascii_names() {
+        for name in ["kayıt.wav", "günaydın şirket.wav", "quote\".wav", "ok.wav"] {
+            let value = content_disposition(name);
+            assert!(
+                HeaderValue::from_str(&value).is_ok(),
+                "not a valid header value for {}: {}",
+                name,
+                value
+            );
+        }
+    }
+
+    #[test]
+    fn content_disposition_keeps_the_real_name_in_filename_star() {
+        let value = content_disposition("kayıt.wav");
+        assert!(value.contains("filename=\"kay_t.wav\""), "{}", value);
+        assert!(
+            value.contains("filename*=UTF-8''kay%C4%B1t.wav"),
+            "{}",
+            value
+        );
+    }
+
+    #[test]
+    fn content_disposition_passes_ascii_names_through() {
+        assert_eq!(
+            content_disposition("greeting.wav"),
+            "inline; filename=\"greeting.wav\"; filename*=UTF-8''greeting.wav"
+        );
+    }
 }

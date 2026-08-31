@@ -15,6 +15,7 @@ impl SipClient {
     /// Send INVITE to establish a call. Returns true if call is set up.
     /// Handles 401/407 authentication challenges.
     pub async fn invite(&mut self, target_uri: &str) -> Result<bool> {
+        utils::validate_header_value(target_uri, "call target")?;
         let formatted_uri = if target_uri.starts_with("sip:") || target_uri.starts_with("sips:") {
             target_uri.to_string()
         } else if target_uri.contains('@') {

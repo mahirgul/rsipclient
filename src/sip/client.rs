@@ -176,6 +176,7 @@ impl SipClient {
 
     /// Send a SIP MESSAGE text chat request (RFC 3428)
     pub async fn send_message(&self, target_uri: &str, text_body: &str) -> Result<String> {
+        crate::sip::utils::validate_header_value(target_uri, "message target")?;
         let branch = self.new_branch();
         let call_id = self.new_call_id();
         let cseq = self.next_cseq().await;
@@ -197,6 +198,7 @@ impl SipClient {
 
     /// Send out-of-band SIP INFO DTMF digit (RFC 6086)
     pub async fn send_info_dtmf(&self, digit: char, duration_ms: u32) -> Result<String> {
+        crate::sip::utils::validate_dtmf_digit(digit)?;
         let remote_uri = self
             .remote_uri
             .as_deref()
@@ -238,6 +240,7 @@ impl SipClient {
         event_type: &str,
         expires_secs: u32,
     ) -> Result<String> {
+        crate::sip::utils::validate_header_value(target_uri, "subscribe target")?;
         let branch = self.new_branch();
         let call_id = self.new_call_id();
         let cseq = self.next_cseq().await;

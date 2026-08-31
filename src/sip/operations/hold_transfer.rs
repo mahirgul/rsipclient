@@ -91,6 +91,7 @@ impl SipClient {
     /// Transfer the active call to a target URI
     /// Sends a REFER request instructing the server/peer to connect to the target.
     pub async fn transfer(&mut self, target_uri: &str) -> Result<bool> {
+        crate::sip::utils::validate_header_value(target_uri, "transfer target")?;
         if !self.in_call {
             log::warn!("No active call to transfer");
             return Ok(false);
