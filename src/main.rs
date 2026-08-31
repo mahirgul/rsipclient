@@ -34,7 +34,8 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // Initialize Syslog if specified in config or CLI flags
-    if let Ok(cfg) = Config::load(&cli.config) {
+    // (this also bootstraps a default config.toml on first run if none exists)
+    if let Ok(cfg) = Config::load_or_init(&cli.config) {
         if cli.syslog
             || cli.syslog_server.is_some()
             || cli.syslog_protocol.is_some()
@@ -98,7 +99,7 @@ async fn main() -> Result<()> {
     // --- Service mode ---
     if let Some(Command::Service { ctrl_port }) = cli.command {
         println!("Loading config: {}", cli.config);
-        let cfg = Config::load(&cli.config).context("Failed to load config file")?;
+        let cfg = Config::load_or_init(&cli.config).context("Failed to load config file")?;
         let svc = service::Service::new(&cfg, ctrl_port, cli.config.clone())
             .await
             .context("Failed to create service")?;
@@ -113,7 +114,7 @@ async fn main() -> Result<()> {
 
     // --- Offline list ---
     if let Some(Command::List) = cli.command {
-        let cfg = Config::load(&cli.config)?;
+        let cfg = Config::load_or_init(&cli.config)?;
         println!("Configured accounts:");
         for (i, a) in cfg.accounts.iter().enumerate() {
             let disp = a.display_name.as_deref().unwrap_or("-");
@@ -181,7 +182,7 @@ async fn main() -> Result<()> {
         (c, Some(a), Some(t)) => Request::with_target(c, &a, &t),
         (c, Some(a), None) => Request::with_account(c, &a),
         (c, None, _) => {
-            let cfg = Config::load(&cli.config)?;
+            let cfg = Config::load_or_init(&cli.config)?;
             let default_account = &cfg.accounts[0].name;
             eprintln!("Note: No account specified, using '{}'", default_account);
             if let Some(t) = target_opt {

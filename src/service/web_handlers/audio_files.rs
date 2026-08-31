@@ -21,9 +21,11 @@ pub struct WavFile {
 }
 
 fn validate_filename(name: &str) -> bool {
-    !name.contains('/')
+    !name.is_empty()
+        && !name.contains('/')
         && !name.contains('\\')
         && !name.contains("..")
+        && !name.chars().any(|c| c.is_control())
         && (name.to_lowercase().ends_with(".wav") || name.to_lowercase().ends_with(".mp3"))
 }
 

@@ -58,7 +58,6 @@ pub enum Command {
     /// Launch classic Windows Win32 Desktop Softphone GUI
     Gui,
 
-
     /// Register an account with its SIP server
     Register,
 

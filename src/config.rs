@@ -3,8 +3,46 @@
 //! Defines the structure and default values of the client configuration,
 //! including web server settings, command API config, accounts, and audio settings.
 
+use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::path::Path;
+
+/// Default config file content generated on first run when no config file exists yet.
+const DEFAULT_CONFIG_TEMPLATE: &str = r#"[web]
+port = 9090
+username = "admin"
+password = "admin"
+
+[commands_api]
+port = 9099
+
+[syslog]
+enabled = false
+server = "127.0.0.1:514"
+protocol = "udp"
+facility = "user"
+app_name = "rsipclient"
+
+[[accounts]]
+name = "default"
+username = "1000"
+password = "changeme"
+server = "127.0.0.1:5060"
+domain = "localhost"
+sip_port = 5060
+rtp_port_start = 8000
+rtp_port_end = 8010
+auth_method = "md5"
+codec = "pcmu"
+transport = "udp"
+register_expiry = 3600
+register_retry_interval = 30
+early_media = true
+session_timers = false
+auto_answer = false
+ivr_timeout = 10
+"#;
 
 /// Configuration for the web dashboard service
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -299,12 +337,18 @@ impl Config {
 
     /// Get configured web server username, defaulting to "admin" if unspecified
     pub fn web_username(&self) -> &str {
-        self.web.as_ref().map(|w| w.username.as_str()).unwrap_or("admin")
+        self.web
+            .as_ref()
+            .map(|w| w.username.as_str())
+            .unwrap_or("admin")
     }
 
     /// Get configured web server password, defaulting to "admin" if unspecified
     pub fn web_password(&self) -> &str {
-        self.web.as_ref().map(|w| w.password.as_str()).unwrap_or("admin")
+        self.web
+            .as_ref()
+            .map(|w| w.password.as_str())
+            .unwrap_or("admin")
     }
 
     /// Load configuration from a TOML file
@@ -313,6 +357,24 @@ impl Config {
         let config: Config = toml::from_str(&content)?;
         config.validate()?;
         Ok(config)
+    }
+
+    /// Load configuration from a TOML file, bootstrapping a default config
+    /// file at `path` first if it does not exist yet (first-run experience).
+    pub fn load_or_init(path: &str) -> anyhow::Result<Self> {
+        if !Path::new(path).exists() {
+            log::info!(
+                "Config file '{}' not found, creating a default one...",
+                path
+            );
+            fs::write(path, DEFAULT_CONFIG_TEMPLATE)
+                .with_context(|| format!("Failed to create default config file at '{}'", path))?;
+            println!(
+                "No config file found - created a default one at '{}'.",
+                path
+            );
+        }
+        Self::load(path)
     }
 
     /// Save configuration to a TOML file

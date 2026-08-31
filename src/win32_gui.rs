@@ -138,23 +138,31 @@ mod windows_impl {
                 return String::new();
             }
             let mut buf = vec![0u16; (len + 1) as usize];
-            SendMessageW(HWND_ACCOUNT, CB_GETLBTEXT, idx as usize, buf.as_mut_ptr() as LPARAM);
+            SendMessageW(
+                HWND_ACCOUNT,
+                CB_GETLBTEXT,
+                idx as usize,
+                buf.as_mut_ptr() as LPARAM,
+            );
             String::from_utf16_lossy(&buf[..len as usize])
         }
     }
 
     pub async fn run_gui(config_path: String, ctrl_port: u16) -> Result<()> {
-        let cfg = match Config::load(&config_path) {
+        let cfg = match Config::load_or_init(&config_path) {
             Ok(c) => c,
             Err(e) => {
-                eprintln!("Warning: Failed to load config ({}), fallback to default empty config...", e);
-                Config::load("config.toml").unwrap_or_else(|_| Config {
+                eprintln!(
+                    "Warning: Failed to load config ({}), fallback to default empty config...",
+                    e
+                );
+                Config {
                     web: None,
                     commands_api: None,
                     syslog: None,
                     accounts: vec![],
                     plugins: None,
-                })
+                }
             }
         };
 
@@ -166,7 +174,10 @@ mod windows_impl {
         };
 
         if !service_already_running {
-            println!("Service engine not detected on port {}. Launching embedded SIP service engine...", ctrl_port);
+            println!(
+                "Service engine not detected on port {}. Launching embedded SIP service engine...",
+                ctrl_port
+            );
             let cfg_clone = cfg.clone();
             let config_path_clone = config_path.clone();
             tokio::spawn(async move {
@@ -184,7 +195,10 @@ mod windows_impl {
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         } else {
             SERVICE_RUNNING.store(true, Ordering::SeqCst);
-            println!("Connected to existing background SIP service on port {}.", ctrl_port);
+            println!(
+                "Connected to existing background SIP service on port {}.",
+                ctrl_port
+            );
         }
 
         // We run the Win32 GUI message loop on a dedicated thread
@@ -235,7 +249,8 @@ mod windows_impl {
                 let h_font = GetStockObject(DEFAULT_GUI_FONT) as HFONT;
 
                 // 1. Account Combobox & Register Button
-                let _lbl_acc = create_label(hwnd, "SIP Account:", 20, 20, 90, 22, h_font, h_instance);
+                let _lbl_acc =
+                    create_label(hwnd, "SIP Account:", 20, 20, 90, 22, h_font, h_instance);
                 let hwnd_acc = CreateWindowExW(
                     0,
                     to_wide("COMBOBOX").as_ptr(),
@@ -261,14 +276,42 @@ mod windows_impl {
                     SendMessageW(hwnd_acc, CB_SETCURSEL, 0, 0);
                 }
 
-                create_button(hwnd, "Register", 375, 17, 145, 26, ID_BTN_REGISTER, h_font, h_instance);
+                create_button(
+                    hwnd,
+                    "Register",
+                    375,
+                    17,
+                    145,
+                    26,
+                    ID_BTN_REGISTER,
+                    h_font,
+                    h_instance,
+                );
 
                 // 2. Status Label
-                let hwnd_st = create_label(hwnd, "Status: Ready (Idle)", 20, 52, 500, 22, h_font, h_instance);
+                let hwnd_st = create_label(
+                    hwnd,
+                    "Status: Ready (Idle)",
+                    20,
+                    52,
+                    500,
+                    22,
+                    h_font,
+                    h_instance,
+                );
                 HWND_STATUS = hwnd_st;
 
                 // 3. Target URI / Number Input Box
-                create_label(hwnd, "Target / Dial Number:", 20, 85, 140, 22, h_font, h_instance);
+                create_label(
+                    hwnd,
+                    "Target / Dial Number:",
+                    20,
+                    85,
+                    140,
+                    22,
+                    h_font,
+                    h_instance,
+                );
                 let hwnd_tgt = CreateWindowExW(
                     WS_EX_CLIENTEDGE,
                     to_wide("EDIT").as_ptr(),
@@ -287,11 +330,61 @@ mod windows_impl {
                 SendMessageW(hwnd_tgt, WM_SETFONT, h_font as usize, 1);
 
                 // 4. Action Buttons (Call, Hangup, Hold, Resume, Transfer)
-                create_button(hwnd, "📞 CALL", 20, 120, 95, 32, ID_BTN_CALL, h_font, h_instance);
-                create_button(hwnd, "🛑 HANGUP", 122, 120, 95, 32, ID_BTN_HANGUP, h_font, h_instance);
-                create_button(hwnd, "⏸️ HOLD", 224, 120, 95, 32, ID_BTN_HOLD, h_font, h_instance);
-                create_button(hwnd, "▶️ RESUME", 326, 120, 95, 32, ID_BTN_RESUME, h_font, h_instance);
-                create_button(hwnd, "↗️ TRANSFER", 428, 120, 92, 32, ID_BTN_TRANSFER, h_font, h_instance);
+                create_button(
+                    hwnd,
+                    "📞 CALL",
+                    20,
+                    120,
+                    95,
+                    32,
+                    ID_BTN_CALL,
+                    h_font,
+                    h_instance,
+                );
+                create_button(
+                    hwnd,
+                    "🛑 HANGUP",
+                    122,
+                    120,
+                    95,
+                    32,
+                    ID_BTN_HANGUP,
+                    h_font,
+                    h_instance,
+                );
+                create_button(
+                    hwnd,
+                    "⏸️ HOLD",
+                    224,
+                    120,
+                    95,
+                    32,
+                    ID_BTN_HOLD,
+                    h_font,
+                    h_instance,
+                );
+                create_button(
+                    hwnd,
+                    "▶️ RESUME",
+                    326,
+                    120,
+                    95,
+                    32,
+                    ID_BTN_RESUME,
+                    h_font,
+                    h_instance,
+                );
+                create_button(
+                    hwnd,
+                    "↗️ TRANSFER",
+                    428,
+                    120,
+                    92,
+                    32,
+                    ID_BTN_TRANSFER,
+                    h_font,
+                    h_instance,
+                );
 
                 // 5. Classic 3x4 Dialpad Grid
                 let dp_x = 180;
@@ -301,10 +394,18 @@ mod windows_impl {
                 let pad = 8;
 
                 let dial_buttons = [
-                    ("1", ID_BTN_D_1, 0, 0), ("2", ID_BTN_D_2, 1, 0), ("3", ID_BTN_D_3, 2, 0),
-                    ("4", ID_BTN_D_4, 0, 1), ("5", ID_BTN_D_5, 1, 1), ("6", ID_BTN_D_6, 2, 1),
-                    ("7", ID_BTN_D_7, 0, 2), ("8", ID_BTN_D_8, 1, 2), ("9", ID_BTN_D_9, 2, 2),
-                    ("*", ID_BTN_D_STAR, 0, 3), ("0", ID_BTN_D_0, 1, 3), ("#", ID_BTN_D_HASH, 2, 3),
+                    ("1", ID_BTN_D_1, 0, 0),
+                    ("2", ID_BTN_D_2, 1, 0),
+                    ("3", ID_BTN_D_3, 2, 0),
+                    ("4", ID_BTN_D_4, 0, 1),
+                    ("5", ID_BTN_D_5, 1, 1),
+                    ("6", ID_BTN_D_6, 2, 1),
+                    ("7", ID_BTN_D_7, 0, 2),
+                    ("8", ID_BTN_D_8, 1, 2),
+                    ("9", ID_BTN_D_9, 2, 2),
+                    ("*", ID_BTN_D_STAR, 0, 3),
+                    ("0", ID_BTN_D_0, 1, 3),
+                    ("#", ID_BTN_D_HASH, 2, 3),
                 ];
 
                 for (label, id, col, row) in dial_buttons {
@@ -332,18 +433,52 @@ mod windows_impl {
                 HWND_WAV = hwnd_wav;
                 SendMessageW(hwnd_wav, WM_SETFONT, h_font as usize, 1);
 
-                create_button(hwnd, "🎵 Play Audio", 385, 331, 135, 27, ID_BTN_PLAY, h_font, h_instance);
+                create_button(
+                    hwnd,
+                    "🎵 Play Audio",
+                    385,
+                    331,
+                    135,
+                    27,
+                    ID_BTN_PLAY,
+                    h_font,
+                    h_instance,
+                );
 
                 // 7. Web Dashboard Button
-                create_button(hwnd, "🌐 Open Web Dashboard", 20, 370, 500, 28, ID_BTN_WEB, h_font, h_instance);
+                create_button(
+                    hwnd,
+                    "🌐 Open Web Dashboard",
+                    20,
+                    370,
+                    500,
+                    28,
+                    ID_BTN_WEB,
+                    h_font,
+                    h_instance,
+                );
 
                 // 8. Log / Activity Text Box
-                create_label(hwnd, "Real-time Activity & SIP Call Logs:", 20, 405, 300, 18, h_font, h_instance);
+                create_label(
+                    hwnd,
+                    "Real-time Activity & SIP Call Logs:",
+                    20,
+                    405,
+                    300,
+                    18,
+                    h_font,
+                    h_instance,
+                );
                 let hwnd_log = CreateWindowExW(
                     WS_EX_CLIENTEDGE,
                     to_wide("EDIT").as_ptr(),
                     std::ptr::null(),
-                    WS_CHILD | WS_VISIBLE | (ES_MULTILINE as u32) | (ES_READONLY as u32) | WS_VSCROLL | (ES_AUTOVSCROLL as u32),
+                    WS_CHILD
+                        | WS_VISIBLE
+                        | (ES_MULTILINE as u32)
+                        | (ES_READONLY as u32)
+                        | WS_VSCROLL
+                        | (ES_AUTOVSCROLL as u32),
                     20,
                     425,
                     500,
@@ -358,7 +493,10 @@ mod windows_impl {
 
                 let web_url = format!("http://127.0.0.1:{}", web_port);
                 append_log("rsipclient Classic Win32 GUI initialized.");
-                append_log(&format!("Engine mode: Embedded SIP Service + Web Dashboard ({}) + JSON IPC.", web_url));
+                append_log(&format!(
+                    "Engine mode: Embedded SIP Service + Web Dashboard ({}) + JSON IPC.",
+                    web_url
+                ));
 
                 GLOBAL_TX = Some(tx);
 
@@ -380,7 +518,10 @@ mod windows_impl {
                         append_log("Error: No SIP account selected.");
                         continue;
                     }
-                    append_log(&format!("Sending REGISTER request for account '{}'...", account));
+                    append_log(&format!(
+                        "Sending REGISTER request for account '{}'...",
+                        account
+                    ));
                     set_status_text(&format!("Status: Registering '{}'...", account));
                     let req = Request::with_account("register", &account);
                     let resp = ipc_client::send_ipc(&req, port).await;
@@ -390,10 +531,15 @@ mod windows_impl {
                     let account = get_selected_account();
                     let target = get_control_text(unsafe { HWND_TARGET });
                     if account.is_empty() || target.trim().is_empty() {
-                        append_log("Error: Please select an account and enter a target SIP URI/number.");
+                        append_log(
+                            "Error: Please select an account and enter a target SIP URI/number.",
+                        );
                         continue;
                     }
-                    append_log(&format!("Placing outbound call from '{}' to '{}'...", account, target));
+                    append_log(&format!(
+                        "Placing outbound call from '{}' to '{}'...",
+                        account, target
+                    ));
                     set_status_text(&format!("Status: Calling {}...", target));
                     let req = Request::with_target("call", &account, &target);
                     let resp = ipc_client::send_ipc(&req, port).await;
@@ -401,7 +547,10 @@ mod windows_impl {
                 }
                 GuiAction::Hangup => {
                     let account = get_selected_account();
-                    append_log(&format!("Sending HANGUP request for account '{}'...", account));
+                    append_log(&format!(
+                        "Sending HANGUP request for account '{}'...",
+                        account
+                    ));
                     set_status_text("Status: Hanging up...");
                     let req = Request::with_account("hangup", &account);
                     let resp = ipc_client::send_ipc(&req, port).await;
@@ -463,7 +612,10 @@ mod windows_impl {
                 }
                 GuiAction::OpenWeb => {
                     let web_url = format!("http://127.0.0.1:{}", web_port);
-                    append_log(&format!("Opening Web Dashboard ({}) in browser...", web_url));
+                    append_log(&format!(
+                        "Opening Web Dashboard ({}) in browser...",
+                        web_url
+                    ));
                     let _ = std::process::Command::new("cmd")
                         .args(["/C", "start", &web_url])
                         .spawn();
@@ -583,7 +735,7 @@ mod windows_impl {
     ) -> LRESULT {
         match msg {
             WM_COMMAND => {
-                let id = (wparam & 0xffff) as usize;
+                let id = wparam & 0xffff;
                 match id {
                     ID_BTN_REGISTER => send_action(GuiAction::Register),
                     ID_BTN_CALL => send_action(GuiAction::Call),

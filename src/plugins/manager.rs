@@ -142,6 +142,9 @@ impl PluginManager {
 
     /// Read content of a script file
     pub async fn get_script_content(&self, filename: &str) -> Result<String, String> {
+        if !is_safe_script_filename(filename) {
+            return Err("Invalid filename".to_string());
+        }
         let cfg = self.config.lock().await;
         let path = Path::new(&cfg.script_dir).join(filename);
         fs::read_to_string(path).map_err(|e| format!("Could not read file: {}", e))
@@ -151,6 +154,9 @@ impl PluginManager {
     pub async fn save_script_file(&self, filename: &str, content: &str) -> Result<(), String> {
         if !filename.ends_with(".rhai") && !filename.ends_with(".lua") {
             return Err("Filename must end with .rhai or .lua".to_string());
+        }
+        if !is_safe_script_filename(filename) {
+            return Err("Invalid filename".to_string());
         }
         let cfg = self.config.lock().await;
         let path = Path::new(&cfg.script_dir).join(filename);
@@ -167,4 +173,14 @@ impl PluginManager {
     pub async fn get_config(&self) -> PluginSystemConfig {
         self.config.lock().await.clone()
     }
+}
+
+/// Reject anything but a plain filename, preventing path traversal / absolute-path
+/// escapes out of the configured script directory (e.g. "../../etc/passwd", "/etc/passwd", "C:\\...").
+fn is_safe_script_filename(filename: &str) -> bool {
+    !filename.is_empty()
+        && filename != "."
+        && filename != ".."
+        && !filename.contains('/')
+        && !filename.contains('\\')
 }

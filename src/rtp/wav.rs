@@ -93,8 +93,10 @@ pub fn parse_wav(data: &[u8]) -> Result<(WavInfo, Vec<i16>)> {
 
             let samples: Vec<i16> = if bits_per_sample == 16 {
                 data[chunk_start..chunk_end]
-                    .chunks_exact(2)
-                    .map(|c| i16::from_le_bytes([c[0], c[1]]))
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
+                    .map(|c| i16::from_le_bytes(*c))
                     .collect()
             } else {
                 data[chunk_start..chunk_end]

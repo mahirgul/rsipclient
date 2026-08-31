@@ -71,8 +71,8 @@ pub async fn handle_audio_ws(socket: WebSocket, state: AppState, account_name: S
         while let Some(Ok(msg)) = ws_receiver.next().await {
             if let Message::Binary(bytes) = msg {
                 let mut samples = Vec::with_capacity(bytes.len() / 2);
-                for chunk in bytes.chunks_exact(2) {
-                    let sample = i16::from_le_bytes([chunk[0], chunk[1]]);
+                for chunk in bytes.as_chunks::<2>().0 {
+                    let sample = i16::from_le_bytes(*chunk);
                     samples.push(sample);
                 }
 
