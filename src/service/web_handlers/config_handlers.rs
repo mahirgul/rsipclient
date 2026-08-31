@@ -33,6 +33,15 @@ pub async fn put_config(
 ) -> Result<impl IntoResponse, StatusCode> {
     verify_token(&headers, &state)?;
 
+    // Validate before writing: a rejected config must leave both the file and
+    // the running clients untouched.
+    if let Err(e) = new_config.validate() {
+        log::warn!("Rejected invalid configuration: {}", e);
+        return Ok(Json(
+            serde_json::json!({ "success": false, "msg": format!("Invalid configuration: {}", e) }),
+        ));
+    }
+
     // Save config to file
     new_config.save(&state.config_path).map_err(|e| {
         log::error!(
@@ -49,22 +58,36 @@ pub async fn put_config(
     }
 
     // Perform dynamic reload of all clients
-    if let Err(e) = reload_all_clients(&state.clients, &new_config, &state.global_shutdown).await {
-        log::error!("Failed to reload clients dynamically: {}", e);
-        return Err(StatusCode::BAD_REQUEST);
-    }
+    let failed = reload_all_clients(&state.clients, &new_config, &state.global_shutdown).await;
 
-    Ok(Json(
-        serde_json::json!({ "success": true, "msg": "Configuration updated and reloaded successfully" }),
-    ))
+    if failed.is_empty() {
+        Ok(Json(
+            serde_json::json!({ "success": true, "msg": "Configuration updated and reloaded successfully" }),
+        ))
+    } else {
+        Ok(Json(serde_json::json!({
+            "success": true,
+            "msg": format!(
+                "Configuration updated, but {} account(s) failed to start",
+                failed.len()
+            ),
+            "failed_accounts": failed
+        })))
+    }
 }
 
+/// Stop every running client and start the ones the config now describes.
+///
+/// Returns the names of the accounts that could not be started. An account that
+/// fails to bind must not take the rest of them down with it — matching what
+/// startup does — so the failure is collected rather than propagated.
 pub async fn reload_all_clients(
     clients: &Arc<Mutex<HashMap<String, ManagedClient>>>,
     config: &Config,
     global_shutdown: &Arc<Mutex<bool>>,
-) -> Result<(), anyhow::Error> {
+) -> Vec<String> {
     let mut cls = clients.lock().await;
+    let mut failed = Vec::new();
 
     // Gracefully stop old clients: end calls, stop RTP receivers, unregister
     for mc in cls.values() {
@@ -82,7 +105,14 @@ pub async fn reload_all_clients(
 
     // Create new clients from config
     for account in &config.accounts {
-        let mc = create_managed_client(account).await?;
+        let mc = match create_managed_client(account).await {
+            Ok(mc) => mc,
+            Err(e) => {
+                log::error!("Failed to create client for '{}': {}", account.name, e);
+                failed.push(account.name.clone());
+                continue;
+            }
+        };
         let client = mc.client.clone();
         let codec = mc.codec;
         let acc = mc.account.clone();
@@ -128,5 +158,5 @@ pub async fn reload_all_clients(
         cls.insert(account_name, mc);
     }
 
-    Ok(())
+    failed
 }

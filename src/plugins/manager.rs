@@ -142,24 +142,15 @@ impl PluginManager {
 
     /// Read content of a script file
     pub async fn get_script_content(&self, filename: &str) -> Result<String, String> {
-        if !is_safe_script_filename(filename) {
-            return Err("Invalid filename".to_string());
-        }
         let cfg = self.config.lock().await;
-        let path = Path::new(&cfg.script_dir).join(filename);
+        let path = resolve_script_path(&cfg.script_dir, filename)?;
         fs::read_to_string(path).map_err(|e| format!("Could not read file: {}", e))
     }
 
     /// Save or update content of a script file (.rhai or .lua)
     pub async fn save_script_file(&self, filename: &str, content: &str) -> Result<(), String> {
-        if !filename.ends_with(".rhai") && !filename.ends_with(".lua") {
-            return Err("Filename must end with .rhai or .lua".to_string());
-        }
-        if !is_safe_script_filename(filename) {
-            return Err("Invalid filename".to_string());
-        }
         let cfg = self.config.lock().await;
-        let path = Path::new(&cfg.script_dir).join(filename);
+        let path = resolve_script_path(&cfg.script_dir, filename)?;
         fs::write(path, content).map_err(|e| format!("Could not save file: {}", e))
     }
 
@@ -183,4 +174,123 @@ fn is_safe_script_filename(filename: &str) -> bool {
         && filename != ".."
         && !filename.contains('/')
         && !filename.contains('\\')
+}
+
+fn has_script_extension(filename: &str) -> bool {
+    let lower = filename.to_lowercase();
+    lower.ends_with(".rhai") || lower.ends_with(".lua")
+}
+
+/// Resolve `filename` to a path inside the configured script directory.
+///
+/// Restricting the filename is not enough on its own: `script_dir` is itself
+/// settable through the dashboard, and a symlink dropped into it points
+/// wherever it likes. Require the extension on reads as well as writes, and
+/// require the resolved path to stay under the resolved script directory.
+fn resolve_script_path(script_dir: &str, filename: &str) -> Result<PathBuf, String> {
+    if !is_safe_script_filename(filename) {
+        return Err("Invalid filename".to_string());
+    }
+    if !has_script_extension(filename) {
+        return Err("Filename must end with .rhai or .lua".to_string());
+    }
+
+    let base = Path::new(script_dir)
+        .canonicalize()
+        .map_err(|e| format!("Script directory is not accessible: {}", e))?;
+    let path = base.join(filename);
+
+    match path.canonicalize() {
+        // The file exists — it must resolve to somewhere under the script dir,
+        // which a symlink pointing outside would not.
+        Ok(resolved) if resolved.starts_with(&base) => Ok(resolved),
+        Ok(_) => Err("Invalid filename".to_string()),
+        // Not created yet: `base` is canonical and the filename carries no
+        // separators, so the join cannot leave the directory.
+        Err(_) => Ok(path),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Create an empty directory under the system temp dir, unique per test.
+    fn temp_script_dir(tag: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("rsipclient-scripts-{}-{}", tag, std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("temp dir");
+        dir
+    }
+
+    #[test]
+    fn accepts_a_plain_script_name() {
+        let dir = temp_script_dir("plain");
+        let path = resolve_script_path(dir.to_str().unwrap(), "ivr.lua").expect("should resolve");
+        assert_eq!(path, dir.canonicalize().unwrap().join("ivr.lua"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rejects_path_separators_and_traversal() {
+        let dir = temp_script_dir("traversal");
+        let d = dir.to_str().unwrap();
+        for bad in [
+            "../secrets.lua",
+            "sub/ivr.lua",
+            "sub\\ivr.lua",
+            "..",
+            ".",
+            "",
+        ] {
+            assert!(
+                resolve_script_path(d, bad).is_err(),
+                "{} should be rejected",
+                bad
+            );
+        }
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// `script_dir` is settable through the dashboard, so without an extension
+    /// check on reads it doubled as an arbitrary file reader.
+    #[test]
+    fn rejects_names_that_are_not_scripts() {
+        let dir = temp_script_dir("ext");
+        let d = dir.to_str().unwrap();
+        assert!(resolve_script_path(d, "shadow").is_err());
+        assert!(resolve_script_path(d, "id_rsa").is_err());
+        assert!(resolve_script_path(d, "notes.txt").is_err());
+        assert!(
+            resolve_script_path(d, "ivr.LUA").is_ok(),
+            "extension check is case-insensitive"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A symlink dropped in the script directory still has a bare, correctly
+    /// suffixed name — only resolving it catches where it actually points.
+    #[cfg(unix)]
+    #[test]
+    fn rejects_a_symlink_out_of_the_script_dir() {
+        let dir = temp_script_dir("symlink");
+        let outside =
+            std::env::temp_dir().join(format!("rsipclient-outside-{}.lua", std::process::id()));
+        fs::write(&outside, "-- secret").expect("write outside file");
+        let link = dir.join("escape.lua");
+        std::os::unix::fs::symlink(&outside, &link).expect("symlink");
+
+        assert!(resolve_script_path(dir.to_str().unwrap(), "escape.lua").is_err());
+
+        let _ = fs::remove_file(&outside);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rejects_a_missing_script_dir() {
+        let missing = std::env::temp_dir().join("rsipclient-no-such-dir-xyz");
+        let _ = fs::remove_dir_all(&missing);
+        assert!(resolve_script_path(missing.to_str().unwrap(), "ivr.lua").is_err());
+    }
 }

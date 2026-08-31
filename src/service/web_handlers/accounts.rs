@@ -33,22 +33,31 @@ pub async fn add_account(
     verify_token(&headers, &state)?;
 
     let mut cls = state.clients.lock().await;
-    if cls.contains_key(&new_acc.name) {
+
+    // Load config first: an account that failed to start at boot is absent from
+    // `cls` but still present in the file, and appending it again would write a
+    // duplicate.
+    let mut cfg =
+        Config::load(&state.config_path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if cls.contains_key(&new_acc.name) || cfg.accounts.iter().any(|a| a.name == new_acc.name) {
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    // Load config, append account, save config
-    let mut cfg =
-        Config::load(&state.config_path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     cfg.accounts.push(new_acc.clone());
-    cfg.save(&state.config_path)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    cfg.validate().map_err(|e| {
+        log::warn!("Rejected invalid account '{}': {}", new_acc.name, e);
+        StatusCode::BAD_REQUEST
+    })?;
 
-    // Create managed client and insert
+    // Create the managed client before persisting, so a config that cannot be
+    // run is never written to disk.
     let mc = create_managed_client(&new_acc).await.map_err(|e| {
         log::error!("Failed to create dynamic client: {}", e);
         StatusCode::BAD_REQUEST
     })?;
+
+    cfg.save(&state.config_path)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Spawn background watchers
     super::super::spawn_watchers_for_client(
@@ -72,18 +81,26 @@ pub async fn edit_account(
 
     let mut cls = state.clients.lock().await;
 
-    // Load config, update, save config
+    // Load config and apply the edit in memory; nothing is written until the
+    // replacement client is actually running.
     let mut cfg =
         Config::load(&state.config_path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    if let Some(idx) = cfg.accounts.iter().position(|a| a.name == name) {
-        cfg.accounts[idx] = updated_acc.clone();
-    } else {
-        return Err(StatusCode::NOT_FOUND);
-    }
-    cfg.save(&state.config_path)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let old_account = match cfg.accounts.iter().position(|a| a.name == name) {
+        Some(idx) => {
+            let previous = cfg.accounts[idx].clone();
+            cfg.accounts[idx] = updated_acc.clone();
+            previous
+        }
+        None => return Err(StatusCode::NOT_FOUND),
+    };
+    cfg.validate().map_err(|e| {
+        log::warn!("Rejected invalid account '{}': {}", name, e);
+        StatusCode::BAD_REQUEST
+    })?;
 
-    // If the old client was successfully running/initialized, stop and drop it
+    // If the old client was successfully running/initialized, stop and drop it.
+    // The replacement usually reuses the same ports, so the old one has to go
+    // first — which is why a failure below has to put it back.
     if let Some(old_mc) = cls.remove(&name) {
         // Stop watcher task of old client
         *old_mc.active.lock().await = false;
@@ -101,10 +118,30 @@ pub async fn edit_account(
     }
 
     // Create new managed client
-    let mc = create_managed_client(&updated_acc).await.map_err(|e| {
-        log::error!("Failed to create dynamic client: {}", e);
-        StatusCode::BAD_REQUEST
-    })?;
+    let mc = match create_managed_client(&updated_acc).await {
+        Ok(mc) => mc,
+        Err(e) => {
+            log::error!("Failed to create dynamic client: {}", e);
+            // Put the previous account back so the edit fails cleanly instead
+            // of leaving the account running nowhere.
+            match create_managed_client(&old_account).await {
+                Ok(restored) => {
+                    super::super::spawn_watchers_for_client(
+                        old_account.name.clone(),
+                        &restored,
+                        state.global_shutdown.clone(),
+                    );
+                    cls.insert(old_account.name.clone(), restored);
+                }
+                Err(e) => log::error!(
+                    "Failed to restore previous client for '{}': {}",
+                    old_account.name,
+                    e
+                ),
+            }
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    };
 
     // Spawn background watchers
     super::super::spawn_watchers_for_client(
@@ -115,6 +152,9 @@ pub async fn edit_account(
 
     // Insert new (handles renaming)
     cls.insert(updated_acc.name.clone(), mc);
+
+    cfg.save(&state.config_path)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(serde_json::json!({ "success": true })))
 }
@@ -140,6 +180,10 @@ pub async fn delete_account(
     }
 
     cfg.accounts.retain(|a| a.name != name);
+    cfg.validate().map_err(|e| {
+        log::warn!("Refusing to delete account '{}': {}", name, e);
+        StatusCode::BAD_REQUEST
+    })?;
     cfg.save(&state.config_path)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
