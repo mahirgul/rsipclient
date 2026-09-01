@@ -46,14 +46,94 @@ pub fn build_sdp(username: &str, local_ip: &str, rtp_port: u16, codecs: &[Codec]
 }
 
 /// Build a minimal SDP with just one codec
-#[allow(dead_code)]
 pub fn build_sdp_single(username: &str, local_ip: &str, rtp_port: u16, codec: Codec) -> String {
     build_sdp(username, local_ip, rtp_port, &[codec])
 }
 
-/// Default SDP: PCMU + PCMA + Opus
-pub fn build_sdp_default(username: &str, local_ip: &str, rtp_port: u16) -> String {
-    let mut codecs = vec![Codec::Pcmu, Codec::Pcma];
-    codecs.push(Codec::Opus);
-    build_sdp(username, local_ip, rtp_port, &codecs)
+/// Parse the list of audio codecs advertised in a remote SDP body.
+///
+/// Reads the `m=audio` payload-type list and resolves each payload type to a
+/// codec, first via static/dynamic payload-type assignments, then via the
+/// `a=rtpmap` encoding name.
+pub fn parse_remote_codecs(msg: &str) -> Vec<Codec> {
+    let mut codecs = Vec::new();
+
+    // Collect dynamic payload-type → encoding mappings from a=rtpmap lines.
+    let mut pt_names: std::collections::HashMap<u8, String> = std::collections::HashMap::new();
+    for line in msg.lines() {
+        if let Some(rest) = line.strip_prefix("a=rtpmap:") {
+            let mut parts = rest.split_whitespace();
+            if let (Some(pt_str), Some(enc)) = (parts.next(), parts.next()) {
+                if let Ok(pt) = pt_str.parse::<u8>() {
+                    let encoding = enc.split('/').next().unwrap_or("").to_ascii_lowercase();
+                    pt_names.insert(pt, encoding);
+                }
+            }
+        }
+    }
+
+    if let Some(m_line) = msg.lines().find(|l| l.starts_with("m=audio")) {
+        let parts: Vec<&str> = m_line.split_whitespace().collect();
+        // m=audio <port> <proto> <pt> [<pt> ...]
+        for pt_str in parts.iter().skip(3) {
+            let Ok(pt) = pt_str.parse::<u8>() else {
+                continue;
+            };
+            if let Some(codec) = Codec::from_payload_type(pt) {
+                codecs.push(codec);
+            } else if let Some(enc) = pt_names.get(&pt) {
+                match enc.as_str() {
+                    "pcmu" => codecs.push(Codec::Pcmu),
+                    "pcma" => codecs.push(Codec::Pcma),
+                    "opus" => codecs.push(Codec::Opus),
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    codecs.dedup();
+    codecs
+}
+
+/// Log a warning if the remote SDP does not support our configured codec.
+pub fn warn_codec_mismatch(configured: Codec, msg: &str) {
+    let remote = parse_remote_codecs(msg);
+    if remote.is_empty() {
+        return;
+    }
+    if !remote.contains(&configured) {
+        log::warn!(
+            "Remote does not support configured codec {:?}; remote offers {:?}",
+            configured,
+            remote
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_remote_codecs_reads_static_and_dynamic() {
+        let sdp = "v=0\r\n\
+                   o=x 0 0 IN IP4 1.2.3.4\r\n\
+                   c=IN IP4 1.2.3.4\r\n\
+                   m=audio 8000 RTP/AVP 0 111 101\r\n\
+                   a=rtpmap:111 opus/48000/2\r\n\
+                   a=rtpmap:101 telephone-event/8000\r\n";
+        let codecs = parse_remote_codecs(sdp);
+        assert!(codecs.contains(&Codec::Pcmu));
+        assert!(codecs.contains(&Codec::Opus));
+        assert!(!codecs.contains(&Codec::Pcma));
+    }
+
+    #[test]
+    fn parse_remote_codecs_uses_rtpmap_for_nonstandard_pt() {
+        let sdp = "m=audio 8000 RTP/AVP 96 101\r\n\
+                   a=rtpmap:96 PCMA/8000\r\n";
+        let codecs = parse_remote_codecs(sdp);
+        assert_eq!(codecs, vec![Codec::Pcma]);
+    }
 }

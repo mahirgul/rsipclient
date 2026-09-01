@@ -5,7 +5,7 @@ pub mod tls;
 pub mod udp;
 
 pub use tcp::TcpTransport;
-pub use tls::TlsTransport;
+pub use tls::{TlsConfig, TlsTransport};
 pub use udp::UdpTransport;
 
 use anyhow::Result;
@@ -90,9 +90,10 @@ impl Transport {
         bind_addr: SocketAddr,
         server_addr: SocketAddr,
         domain: &str,
+        config: &TlsConfig,
     ) -> Result<Self> {
         Ok(Transport::Tls(Box::new(
-            TlsTransport::new(bind_addr, server_addr, domain).await?,
+            TlsTransport::new(bind_addr, server_addr, domain, config).await?,
         )))
     }
 

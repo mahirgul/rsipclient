@@ -4,7 +4,31 @@ use anyhow::{Context, Result};
 use std::net::SocketAddr;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio_native_tls::{native_tls::TlsConnector as NativeTlsConnector, TlsConnector, TlsStream};
+use tokio_native_tls::{
+    native_tls::{self, TlsConnector as NativeTlsConnector},
+    TlsConnector, TlsStream,
+};
+
+/// TLS connection verification configuration.
+#[derive(Clone, Debug)]
+pub struct TlsConfig {
+    /// Verify the server certificate chain against system roots / custom CA.
+    pub verify_cert: bool,
+    /// Verify the server hostname matches the certificate.
+    pub verify_hostname: bool,
+    /// Optional path to a PEM file with custom CA certificates.
+    pub ca_cert: Option<String>,
+}
+
+impl Default for TlsConfig {
+    fn default() -> Self {
+        TlsConfig {
+            verify_cert: true,
+            verify_hostname: true,
+            ca_cert: None,
+        }
+    }
+}
 
 /// TLS-wrapped TCP transport for SIP (SIPS).
 /// The inner TLS stream is behind a Mutex so that `&self` methods work.
@@ -21,6 +45,7 @@ impl TlsTransport {
         _bind_addr: SocketAddr,
         server_addr: SocketAddr,
         domain: &str,
+        config: &TlsConfig,
     ) -> Result<Self> {
         let tcp = TcpStream::connect(server_addr)
             .await
@@ -28,11 +53,20 @@ impl TlsTransport {
 
         let local_addr = tcp.local_addr()?;
 
-        // Build TLS connector (accept all certs — configurable later)
+        // Build TLS connector with certificate/hostname verification per config.
         let mut native_connector = NativeTlsConnector::builder();
         native_connector
-            .danger_accept_invalid_certs(true)
-            .danger_accept_invalid_hostnames(true);
+            .danger_accept_invalid_certs(!config.verify_cert)
+            .danger_accept_invalid_hostnames(!config.verify_hostname);
+
+        if let Some(ref ca_path) = config.ca_cert {
+            let pem = std::fs::read(ca_path)
+                .with_context(|| format!("Failed to read TLS CA certificate '{}'", ca_path))?;
+            let cert = native_tls::Certificate::from_pem(&pem)
+                .context("Invalid TLS CA certificate PEM")?;
+            native_connector.add_root_certificate(cert);
+        }
+
         let connector: TlsConnector = native_connector.build()?.into();
 
         let stream = connector

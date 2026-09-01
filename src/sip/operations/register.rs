@@ -35,7 +35,7 @@ impl SipClient {
 
         // Handle MD5 Auth challenge (401 Unauthorized or 407 Proxy Authentication Required)
         if (status == 401 || status == 407) && self.auth_method == crate::sip::AuthMethod::Md5 {
-            let (realm, nonce) = utils::extract_auth_params(&resp)
+            let challenge = utils::extract_auth_challenge(&resp)
                 .context("Cannot extract WWW-Authenticate params")?;
 
             let auth_msg = build_register_with_auth(
@@ -48,8 +48,7 @@ impl SipClient {
                 // Reuse original Call-ID for auth retry (RFC 3261 §22.4)
                 &call_id,
                 self.next_cseq().await,
-                &realm,
-                &nonce,
+                &challenge,
                 &self.settings,
                 self.transport.via_str(),
             );
@@ -106,7 +105,7 @@ impl SipClient {
 
         // Handle MD5 Auth challenge on unregistration
         if (status == 401 || status == 407) && self.auth_method == crate::sip::AuthMethod::Md5 {
-            let (realm, nonce) = utils::extract_auth_params(&resp)
+            let challenge = utils::extract_auth_challenge(&resp)
                 .context("Cannot extract WWW-Authenticate params")?;
 
             let auth_msg = build_register_with_auth(
@@ -119,8 +118,7 @@ impl SipClient {
                 // Reuse original Call-ID for auth retry (RFC 3261 §22.4)
                 &call_id,
                 self.next_cseq().await,
-                &realm,
-                &nonce,
+                &challenge,
                 &settings,
                 self.transport.via_str(),
             );

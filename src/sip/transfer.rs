@@ -132,6 +132,88 @@ pub fn build_hold(
     codec: &str,
     via_transport: &str,
 ) -> String {
+    build_hold_inner(
+        username,
+        domain,
+        remote_uri,
+        local_ip,
+        local_addr,
+        local_tag,
+        remote_tag,
+        call_id,
+        cseq,
+        branch,
+        rtp_port,
+        settings,
+        resume,
+        codec,
+        via_transport,
+        None,
+    )
+}
+
+/// Build a re-INVITE with MD5 Digest authentication (for 401/407 challenges).
+pub fn build_hold_with_auth(
+    username: &str,
+    password: &str,
+    domain: &str,
+    remote_uri: &str,
+    local_ip: &str,
+    local_addr: &str,
+    local_tag: &str,
+    remote_tag: &str,
+    call_id: &str,
+    cseq: u32,
+    branch: &str,
+    rtp_port: u16,
+    settings: &SipSettings,
+    resume: bool,
+    codec: &str,
+    via_transport: &str,
+    challenge: &crate::sip::utils::AuthChallenge,
+) -> String {
+    let auth_header = crate::sip::auth::build_authorization_header(
+        username, password, challenge, "INVITE", remote_uri,
+    );
+    build_hold_inner(
+        username,
+        domain,
+        remote_uri,
+        local_ip,
+        local_addr,
+        local_tag,
+        remote_tag,
+        call_id,
+        cseq,
+        branch,
+        rtp_port,
+        settings,
+        resume,
+        codec,
+        via_transport,
+        Some(&auth_header),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_hold_inner(
+    username: &str,
+    domain: &str,
+    remote_uri: &str,
+    local_ip: &str,
+    local_addr: &str,
+    local_tag: &str,
+    remote_tag: &str,
+    call_id: &str,
+    cseq: u32,
+    branch: &str,
+    rtp_port: u16,
+    settings: &SipSettings,
+    resume: bool,
+    codec: &str,
+    via_transport: &str,
+    auth_header: Option<&str>,
+) -> String {
     let from = settings.format_from(username, domain);
     let direction = if resume { "sendrecv" } else { "sendonly" };
     let scheme = if via_transport.to_uppercase() == "TLS" {
@@ -161,6 +243,11 @@ pub fn build_hold(
     );
     let sdp_len = sdp.len();
 
+    let auth_line = match auth_header {
+        Some(h) => format!("{}\r\n", h),
+        None => String::new(),
+    };
+
     format!(
         "INVITE {} SIP/2.0\r\n\
          Via: SIP/2.0/{} {};branch={}\r\n\
@@ -170,7 +257,7 @@ pub fn build_hold(
          Call-ID: {}\r\n\
          CSeq: {} INVITE\r\n\
          Contact: <{}:{}@{}>\r\n\
-         Content-Type: application/sdp\r\n\
+         {}Content-Type: application/sdp\r\n\
          Content-Length: {}\r\n\
          \r\n\
          {}",
@@ -187,6 +274,7 @@ pub fn build_hold(
         scheme,
         username,
         local_addr,
+        auth_line,
         sdp_len,
         sdp,
     )

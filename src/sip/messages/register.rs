@@ -67,13 +67,13 @@ pub fn build_register_with_auth(
     branch: &str,
     call_id: &str,
     cseq: u32,
-    realm: &str,
-    nonce: &str,
+    challenge: &crate::sip::utils::AuthChallenge,
     settings: &SipSettings,
     via_transport: &str,
 ) -> String {
     let uri = format!("sip:{}", domain);
-    let response_digest = auth::compute_digest(username, password, realm, nonce, "REGISTER", &uri);
+    let auth_header =
+        auth::build_authorization_header(username, password, challenge, "REGISTER", &uri);
     let from = settings.format_from(username, domain);
     let extra = settings.extra_headers();
     let expiry = settings.register_expiry;
@@ -92,7 +92,7 @@ pub fn build_register_with_auth(
          Call-ID: {}\r\n\
          CSeq: {} REGISTER\r\n\
          Contact: <{}:{}@{}>\r\n\
-         Authorization: Digest username=\"{}\", realm=\"{}\", nonce=\"{}\", uri=\"{}\", response=\"{}\", algorithm=MD5\r\n\
+         {}\r\n\
          Expires: {}\r\n\
          {}Content-Length: 0\r\n\
          \r\n",
@@ -109,11 +109,7 @@ pub fn build_register_with_auth(
         scheme,
         username,
         local_addr,
-        username,
-        realm,
-        nonce,
-        uri,
-        response_digest,
+        auth_header,
         expiry,
         extra,
     )

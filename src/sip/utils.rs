@@ -32,8 +32,34 @@ pub fn parse_status_code(response: &str) -> Result<u16> {
     }
 }
 
-/// Extract realm and nonce from WWW-Authenticate / Proxy-Authenticate header.
-pub fn extract_auth_params(response: &str) -> Option<(String, String)> {
+/// Parsed Digest authentication challenge (RFC 2617 §3.2.1).
+#[derive(Debug, Clone, Default)]
+pub struct AuthChallenge {
+    pub realm: String,
+    pub nonce: String,
+    pub opaque: Option<String>,
+    /// Comma-separated list of qop options as sent by the server, e.g. "auth,auth-int".
+    pub qop: Option<String>,
+    /// Parsed but not yet acted on (reserved for MD5-sess / stale-nonce retry).
+    #[allow(dead_code)]
+    pub algorithm: Option<String>,
+    /// Parsed but not yet acted on (reserved for stale-nonce retry).
+    #[allow(dead_code)]
+    pub stale: bool,
+}
+
+impl AuthChallenge {
+    /// True if the server offers the `auth` quality-of-protection.
+    pub fn supports_qop_auth(&self) -> bool {
+        self.qop
+            .as_ref()
+            .map(|q| q.split(',').any(|s| s.trim().eq_ignore_ascii_case("auth")))
+            .unwrap_or(false)
+    }
+}
+
+/// Parse a full Digest challenge from WWW-Authenticate / Proxy-Authenticate.
+pub fn extract_auth_challenge(response: &str) -> Option<AuthChallenge> {
     let header = response.lines().find(|l| {
         starts_with_ascii_ci(l, "www-authenticate:")
             || starts_with_ascii_ci(l, "proxy-authenticate:")
@@ -41,8 +67,21 @@ pub fn extract_auth_params(response: &str) -> Option<(String, String)> {
 
     let realm = extract_quoted(header, "realm=")?;
     let nonce = extract_quoted(header, "nonce=")?;
+    let opaque = extract_quoted(header, "opaque=");
+    let qop = extract_quoted(header, "qop=");
+    let algorithm = extract_quoted(header, "algorithm=");
+    let stale = extract_quoted(header, "stale=")
+        .map(|s| s.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
 
-    Some((realm, nonce))
+    Some(AuthChallenge {
+        realm,
+        nonce,
+        opaque,
+        qop,
+        algorithm,
+        stale,
+    })
 }
 
 /// Match a SIP header line against a full header name or its compact alias.
@@ -208,6 +247,9 @@ pub fn validate_header_value(value: &str, what: &str) -> Result<()> {
             bad as u32
         );
     }
+    if let Some(bad) = value.chars().find(|c| matches!(c, '<' | '>' | '"')) {
+        anyhow::bail!("{} contains an illegal character '{}'", what, bad);
+    }
     Ok(())
 }
 
@@ -315,13 +357,17 @@ mod tests {
     }
 
     #[test]
-    fn extract_auth_params_reads_realm_and_nonce() {
+    fn extract_auth_challenge_parses_qop_opaque_stale() {
         let resp = "SIP/2.0 401 Unauthorized\r\n\
-                    WWW-Authenticate: Digest realm=\"sip.example.com\", nonce=\"deadbeef\"\r\n\r\n";
-        assert_eq!(
-            extract_auth_params(resp),
-            Some(("sip.example.com".to_string(), "deadbeef".to_string()))
-        );
+                    WWW-Authenticate: Digest realm=\"sip.example.com\", nonce=\"deadbeef\", \
+                    opaque=\"xyz\", qop=\"auth,auth-int\", algorithm=MD5, stale=false\r\n\r\n";
+        let c = extract_auth_challenge(resp).unwrap();
+        assert_eq!(c.realm, "sip.example.com");
+        assert_eq!(c.nonce, "deadbeef");
+        assert_eq!(c.opaque.as_deref(), Some("xyz"));
+        assert!(c.supports_qop_auth());
+        assert!(!c.stale);
+        assert_eq!(c.algorithm.as_deref(), Some("MD5"));
     }
 
     /// An INVITE crafted to panic the incoming-call watcher must parse cleanly.
@@ -370,5 +416,14 @@ mod tests {
         for c in ['\r', '\n', 'z', ' ', '\0'] {
             assert!(validate_dtmf_digit(c).is_err(), "{:?} should be invalid", c);
         }
+    }
+
+    #[test]
+    fn validate_header_value_rejects_angle_brackets_and_quotes() {
+        assert!(validate_header_value("sip:bob@example.com", "target").is_ok());
+        assert!(validate_header_value("sip:b@e.com;transport=tcp", "target").is_ok());
+        assert!(validate_header_value("<sip:b@e.com>", "target").is_err());
+        assert!(validate_header_value("sip:b@e.com>", "target").is_err());
+        assert!(validate_header_value("sip:\"b\"@e.com", "target").is_err());
     }
 }

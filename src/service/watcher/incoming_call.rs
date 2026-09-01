@@ -71,6 +71,7 @@ pub async fn incoming_call_watcher(
 
         // Parse remote RTP addr from SDP
         let remote_rtp = parse_sdp_connection(&msg);
+        sdp::warn_codec_mismatch(codec, &msg);
 
         // Find and bind a free RTP receiver in the range
         let (rtp_port_start, rtp_port_end) = {
@@ -112,7 +113,7 @@ pub async fn incoming_call_watcher(
         let response = {
             let c = client.lock().await;
             let local_ip = c.local_addr.ip().to_string();
-            let sdp_body = sdp::build_sdp_default(&c.username, &local_ip, bound_rtp_port);
+            let sdp_body = sdp::build_sdp_single(&c.username, &local_ip, bound_rtp_port, codec);
             let sdp_len = sdp_body.len();
             let via_transport = c.transport.via_str();
             let scheme = if via_transport.to_uppercase() == "TLS" {
@@ -157,14 +158,64 @@ pub async fn incoming_call_watcher(
                 .await;
         }
 
-        // Wait for ACK
-        let ack_received = {
-            let c = client.lock().await;
-            match c.recv_extra(5000).await {
-                Ok(ack) => ack.starts_with("ACK"),
-                Err(_) => false,
+        // Wait for ACK, handling a CANCEL that races our 200 OK.
+        let mut ack_received = false;
+        let mut cancelled = false;
+        for _ in 0..5 {
+            let pending = {
+                let c = client.lock().await;
+                c.recv_extra(2000).await.ok()
+            };
+            match pending {
+                Some(m) if m.starts_with("ACK") => {
+                    ack_received = true;
+                    break;
+                }
+                Some(m) if m.starts_with("CANCEL") => {
+                    log::info!("[{}] Remote sent CANCEL during setup", account_name);
+                    let from_header_val = utils::extract_header(&m, "From");
+                    let to_header_val = utils::extract_header(&m, "To");
+                    let call_id_val = utils::extract_header(&m, "Call-ID");
+                    let cseq_str = utils::extract_header(&m, "CSeq");
+                    let via_headers = utils::extract_headers_raw(&m, "Via");
+                    let via_block = via_headers.join("\r\n");
+                    let cseq_num = cseq_str
+                        .split_whitespace()
+                        .next()
+                        .and_then(|s| s.parse::<u32>().ok())
+                        .unwrap_or(1);
+
+                    let response = format!(
+                        "SIP/2.0 200 OK\r\n\
+                         {}\r\n\
+                         From: {}\r\n\
+                         To: {}\r\n\
+                         Call-ID: {}\r\n\
+                         CSeq: {} CANCEL\r\n\
+                         Content-Length: 0\r\n\
+                         \r\n",
+                        via_block, from_header_val, to_header_val, call_id_val, cseq_num,
+                    );
+                    {
+                        let c = client.lock().await;
+                        let _ = c
+                            .transport
+                            .send_to(response.as_bytes(), c.server_addr)
+                            .await;
+                    }
+                    cancelled = true;
+                    break;
+                }
+                _ => {
+                    // Timeout or unrelated message — keep waiting for ACK.
+                }
             }
-        };
+        }
+
+        if cancelled {
+            crate::service::logger::record_call_end(&call_id, "Cancelled", 0);
+            continue;
+        }
 
         if !ack_received {
             log::warn!("[{}] No ACK received, skipping call setup", account_name);
@@ -186,6 +237,7 @@ pub async fn incoming_call_watcher(
             c.remote_rtp_addr = remote_rtp;
             c.remote_uri = remote_uri;
             c.rtp_receiver = Some(receiver.clone());
+            c.rtp_port = Some(bound_rtp_port);
         }
         crate::service::logger::record_call_connect(&call_id);
 

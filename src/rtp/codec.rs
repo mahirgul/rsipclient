@@ -42,6 +42,17 @@ impl Codec {
         }
     }
 
+    /// Map an RTP payload type number back to a codec (static assignments plus
+    /// our dynamic Opus assignment).
+    pub fn from_payload_type(pt: u8) -> Option<Self> {
+        match pt {
+            0 => Some(Codec::Pcmu),
+            8 => Some(Codec::Pcma),
+            111 => Some(Codec::Opus),
+            _ => None,
+        }
+    }
+
     /// Clock rate in Hz
     pub fn clock_rate(&self) -> u32 {
         match self {

@@ -43,6 +43,8 @@ pub struct SipClient {
     pub remote_rtp_addr: Option<SocketAddr>,
     pub remote_uri: Option<String>,
     pub rtp_receiver: Option<crate::rtp::receiver::RtpReceiver>,
+    /// Actual local RTP port bound by the receiver (not the range start).
+    pub rtp_port: Option<u16>,
 }
 
 impl SipClient {
@@ -83,6 +85,7 @@ impl SipClient {
             remote_rtp_addr: None,
             remote_uri: None,
             rtp_receiver: None,
+            rtp_port: None,
         })
     }
 

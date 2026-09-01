@@ -30,6 +30,15 @@ pub struct SipSettings {
 
     /// Support RFC 4028 session timers
     pub session_timers: bool,
+
+    /// Verify the server TLS certificate (default: true)
+    pub tls_verify_cert: bool,
+
+    /// Verify the server TLS hostname (default: true)
+    pub tls_verify_hostname: bool,
+
+    /// Optional PEM file with custom CA certificate(s) for TLS verification
+    pub tls_ca_cert: Option<String>,
 }
 
 impl Default for SipSettings {
@@ -44,6 +53,9 @@ impl Default for SipSettings {
             dtmf_mode: None,
             early_media: true,
             session_timers: false,
+            tls_verify_cert: true,
+            tls_verify_hostname: true,
+            tls_ca_cert: None,
         }
     }
 }
@@ -60,6 +72,9 @@ impl SipSettings {
         dtmf_mode: Option<String>,
         early_media: Option<bool>,
         session_timers: Option<bool>,
+        tls_verify_cert: Option<bool>,
+        tls_verify_hostname: Option<bool>,
+        tls_ca_cert: Option<String>,
     ) -> Self {
         SipSettings {
             display_name,
@@ -71,6 +86,9 @@ impl SipSettings {
             dtmf_mode,
             early_media: early_media.unwrap_or(true),
             session_timers: session_timers.unwrap_or(false),
+            tls_verify_cert: tls_verify_cert.unwrap_or(true),
+            tls_verify_hostname: tls_verify_hostname.unwrap_or(true),
+            tls_ca_cert,
         }
     }
 
@@ -79,7 +97,15 @@ impl SipSettings {
     ///   or `<sip:user@domain>`
     pub fn format_from(&self, username: &str, domain: &str) -> String {
         match &self.display_name {
-            Some(ref name) => format!("\"{}\" <sip:{}@{}>", name, username, domain),
+            Some(ref name) => {
+                // Defensive sanitize: display names are quoted, so strip any
+                // quote or control character that would break the header.
+                let clean: String = name
+                    .chars()
+                    .filter(|c| !c.is_control() && *c != '"')
+                    .collect();
+                format!("\"{}\" <sip:{}@{}>", clean, username, domain)
+            }
             None => format!("<sip:{}@{}>", username, domain),
         }
     }
@@ -89,13 +115,22 @@ impl SipSettings {
         let mut h = String::new();
 
         if let Some(ref id) = self.asserted_id {
-            h.push_str(&format!("P-Asserted-Identity: <{}>\r\n", id));
+            let clean: String = id
+                .chars()
+                .filter(|c| !c.is_control() && !matches!(c, '<' | '>' | '"'))
+                .collect();
+            h.push_str(&format!("P-Asserted-Identity: <{}>\r\n", clean));
         }
         if let Some(ref id) = self.preferred_id {
-            h.push_str(&format!("P-Preferred-Identity: <{}>\r\n", id));
+            let clean: String = id
+                .chars()
+                .filter(|c| !c.is_control() && !matches!(c, '<' | '>' | '"'))
+                .collect();
+            h.push_str(&format!("P-Preferred-Identity: <{}>\r\n", clean));
         }
         if let Some(ref ua) = self.user_agent {
-            h.push_str(&format!("User-Agent: {}\r\n", ua));
+            let clean: String = ua.chars().filter(|c| !c.is_control()).collect();
+            h.push_str(&format!("User-Agent: {}\r\n", clean));
         }
         if self.session_timers {
             h.push_str("Session-Expires: 1800;refresher=uac\r\n");

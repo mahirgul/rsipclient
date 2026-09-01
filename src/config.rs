@@ -201,6 +201,17 @@ pub struct Account {
     #[serde(default = "default_transport")]
     pub transport: Option<String>,
 
+    /// Verify the server TLS certificate (default: true)
+    #[serde(default = "default_tls_verify_cert")]
+    pub tls_verify_cert: Option<bool>,
+
+    /// Verify the server TLS hostname (default: true)
+    #[serde(default = "default_tls_verify_hostname")]
+    pub tls_verify_hostname: Option<bool>,
+
+    /// Optional PEM file with custom CA certificate(s) for TLS verification
+    pub tls_ca_cert: Option<String>,
+
     // ── Identity ────────────────────────────────────────
     /// Display name in From header, e.g. "Alice Smith"
     pub display_name: Option<String>,
@@ -301,6 +312,14 @@ fn default_codec() -> Option<String> {
 
 fn default_transport() -> Option<String> {
     Some("udp".to_string())
+}
+
+fn default_tls_verify_cert() -> Option<bool> {
+    Some(true)
+}
+
+fn default_tls_verify_hostname() -> Option<bool> {
+    Some(true)
 }
 
 fn default_register_expiry() -> Option<u32> {
@@ -407,6 +426,27 @@ impl Config {
             if account.server.is_empty() {
                 anyhow::bail!("Account #{} ({}) has empty server", i, account.name);
             }
+
+            // Reject control characters in values that are interpolated into
+            // SIP headers (display name, identity URIs, custom User-Agent).
+            for (field, value) in [
+                ("display_name", account.display_name.as_deref()),
+                ("asserted_id", account.asserted_id.as_deref()),
+                ("preferred_id", account.preferred_id.as_deref()),
+                ("user_agent", account.user_agent.as_deref()),
+            ] {
+                if let Some(v) = value {
+                    if v.chars().any(|c| c.is_control()) {
+                        anyhow::bail!(
+                            "Account #{} ({}) {} contains a control character",
+                            i,
+                            account.name,
+                            field
+                        );
+                    }
+                }
+            }
+
             if account.rtp_port_start > account.rtp_port_end {
                 anyhow::bail!(
                     "Account #{} ({}) rtp_port_start ({}) > rtp_port_end ({})",

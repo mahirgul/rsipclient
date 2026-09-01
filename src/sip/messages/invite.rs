@@ -71,13 +71,13 @@ pub fn build_invite_with_auth(
     call_id: &str,
     cseq: u32,
     sdp: &str,
-    realm: &str,
-    nonce: &str,
+    challenge: &crate::sip::utils::AuthChallenge,
     settings: &SipSettings,
     via_transport: &str,
 ) -> String {
     let uri = target_uri.to_string();
-    let response_digest = auth::compute_digest(username, password, realm, nonce, "INVITE", &uri);
+    let auth_header =
+        auth::build_authorization_header(username, password, challenge, "INVITE", &uri);
     let sdp_len = sdp.len();
     let from = settings.format_from(username, domain);
     let extra = settings.extra_headers();
@@ -96,7 +96,7 @@ pub fn build_invite_with_auth(
          Call-ID: {}\r\n\
          CSeq: {} INVITE\r\n\
          Contact: <{}:{}@{}>\r\n\
-         Authorization: Digest username=\"{}\", realm=\"{}\", nonce=\"{}\", uri=\"{}\", response=\"{}\", algorithm=MD5\r\n\
+         {}\r\n\
          {}Content-Type: application/sdp\r\n\
          Content-Length: {}\r\n\
          \r\n\
@@ -113,11 +113,7 @@ pub fn build_invite_with_auth(
         scheme,
         username,
         local_addr,
-        username,
-        realm,
-        nonce,
-        uri,
-        response_digest,
+        auth_header,
         extra,
         sdp_len,
         sdp,

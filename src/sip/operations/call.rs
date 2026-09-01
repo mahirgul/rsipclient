@@ -3,6 +3,7 @@
 //! This file implements call setup (INVITE, ACK), call termination (BYE, CANCEL),
 //! and in-call features like DTMF digit transmission.
 
+use crate::rtp::codec::Codec;
 use crate::sip::client::SipClient;
 use crate::sip::messages::{
     build_ack, build_bye, build_cancel, build_invite, build_invite_with_auth,
@@ -36,10 +37,12 @@ impl SipClient {
         let branch = self.new_branch();
         let cseq = self.next_cseq().await;
         let local = self.local_addr_str();
-        let sdp_body = sdp::build_sdp_default(
+        let configured_codec = Codec::from_str(&self.codec).unwrap_or(Codec::Pcmu);
+        let sdp_body = sdp::build_sdp_single(
             &self.username,
             &self.local_addr.ip().to_string(),
             bound_rtp_port,
+            configured_codec,
         );
 
         let msg = build_invite(
@@ -61,7 +64,7 @@ impl SipClient {
 
         // Handle 401/407 auth challenge for INVITE
         if (status == 401 || status == 407) && self.auth_method == crate::sip::AuthMethod::Md5 {
-            let (realm, nonce) = utils::extract_auth_params(&resp)
+            let challenge = utils::extract_auth_challenge(&resp)
                 .context("Cannot extract WWW-Authenticate params for INVITE")?;
 
             let auth_cseq = self.next_cseq().await;
@@ -77,8 +80,7 @@ impl SipClient {
                 &call_id,
                 auth_cseq,
                 &sdp_body,
-                &realm,
-                &nonce,
+                &challenge,
                 &self.settings,
                 self.transport.via_str(),
             );
@@ -122,7 +124,9 @@ impl SipClient {
                 self.remote_tag = final_tag2;
                 self.remote_rtp_addr = crate::service::watcher::parse_sdp_connection(&final_resp2);
                 self.rtp_receiver = Some(receiver);
+                self.rtp_port = Some(bound_rtp_port);
                 self.in_call = true;
+                sdp::warn_codec_mismatch(configured_codec, &final_resp2);
                 self.call_start_time = Some(std::time::Instant::now());
                 self.send_ack(target_uri, &local, &call_id, auth_cseq)
                     .await?;
@@ -179,6 +183,8 @@ impl SipClient {
             self.call_start_time = Some(std::time::Instant::now());
             self.remote_rtp_addr = crate::service::watcher::parse_sdp_connection(&final_resp);
             self.rtp_receiver = Some(receiver);
+            self.rtp_port = Some(bound_rtp_port);
+            sdp::warn_codec_mismatch(configured_codec, &final_resp);
             self.send_ack(target_uri, &local, &call_id, cseq).await?;
             log::info!("Call established! Remote RTP: {:?}", self.remote_rtp_addr);
             crate::service::logger::record_call_connect(&call_id);
@@ -324,12 +330,48 @@ impl SipClient {
         Ok(success)
     }
 
-    /// Send DTMF digits on the active call.
+    /// Send DTMF digits on the active call, honouring the configured `dtmf_mode`.
     pub async fn send_dtmf(&mut self, digits: &str) -> Result<bool> {
         if !self.in_call {
             log::warn!("No active call to send DTMF");
             return Ok(false);
         }
+
+        let mode = self
+            .settings
+            .dtmf_mode
+            .as_deref()
+            .unwrap_or("rfc2833")
+            .to_lowercase();
+
+        match mode.as_str() {
+            "info" => {
+                for c in digits.chars() {
+                    if let Err(e) = self.send_info_dtmf(c, 250).await {
+                        log::error!("INFO DTMF failed for '{}': {}", c, e);
+                    }
+                }
+            }
+            "inband" => {
+                log::warn!(
+                    "dtmf_mode=inband sending is not yet supported; falling back to RFC 2833"
+                );
+                self.send_dtmf_rfc2833(digits).await?;
+            }
+            _ => {
+                self.send_dtmf_rfc2833(digits).await?;
+            }
+        }
+
+        if let Some(ref cid) = self.call_id {
+            crate::service::logger::record_call_dtmf(cid, digits);
+        }
+
+        Ok(true)
+    }
+
+    /// Send DTMF digits using RFC 2833 telephone-event packets.
+    async fn send_dtmf_rfc2833(&self, digits: &str) -> Result<()> {
         let target = self.remote_rtp_addr.context("No remote RTP address")?;
         let rtp_receiver = self
             .rtp_receiver
@@ -344,11 +386,6 @@ impl SipClient {
                 .send_dtmf_digit(c, target, &mut seq, &mut timestamp)
                 .await?;
         }
-
-        if let Some(ref cid) = self.call_id {
-            crate::service::logger::record_call_dtmf(cid, digits);
-        }
-
-        Ok(true)
+        Ok(())
     }
 }

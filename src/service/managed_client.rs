@@ -3,7 +3,7 @@
 use crate::config::Account;
 use crate::rtp::codec::Codec;
 use crate::service::watcher::{incoming_call_watcher, registration_watcher};
-use crate::sip::transport::Transport;
+use crate::sip::transport::{TlsConfig, Transport};
 use crate::sip::{AuthMethod, SipClient, SipSettings};
 use anyhow::{Context, Result};
 use std::net::SocketAddr;
@@ -44,7 +44,13 @@ pub async fn create_managed_client(account: &Account) -> Result<ManagedClient> {
 
     let (transport, local_addr) = if transport_type == "tls" {
         let bind_addr: SocketAddr = format!("0.0.0.0:{}", account.sip_port).parse()?;
-        let transport = Transport::new_tls(bind_addr, server_addr, &account.domain).await?;
+        let tls_config = TlsConfig {
+            verify_cert: account.tls_verify_cert.unwrap_or(true),
+            verify_hostname: account.tls_verify_hostname.unwrap_or(true),
+            ca_cert: account.tls_ca_cert.clone(),
+        };
+        let transport =
+            Transport::new_tls(bind_addr, server_addr, &account.domain, &tls_config).await?;
         let local_addr = transport.local_addr()?;
         log::info!(
             "Account '{}' using TLS transport to {}",
@@ -91,6 +97,9 @@ pub async fn create_managed_client(account: &Account) -> Result<ManagedClient> {
         account.dtmf_mode.clone(),
         account.early_media,
         account.session_timers,
+        account.tls_verify_cert,
+        account.tls_verify_hostname,
+        account.tls_ca_cert.clone(),
     );
 
     let client = SipClient::new(
