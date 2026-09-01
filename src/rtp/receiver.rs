@@ -8,6 +8,67 @@ use std::sync::Arc;
 use tokio::net::UdpSocket;
 use tokio::sync::Mutex;
 
+/// Cap on buffered recording samples (30 minutes at 8 kHz).
+///
+/// The receive loop appends every decoded packet, and a caller that never stops
+/// recording — or a peer that keeps sending — would otherwise grow this without
+/// bound.
+const MAX_RECORDING_SAMPLES: usize = 8_000 * 60 * 30;
+
+/// The RTP header fields the receive loop acts on.
+pub(crate) struct RtpPacket<'a> {
+    pub payload_type: u8,
+    pub sequence: u16,
+    pub payload: &'a [u8],
+}
+
+/// Parse an RTP packet header (RFC 3550 section 5.1).
+///
+/// The payload does not start at a fixed offset: CSRC entries and a header
+/// extension push it back, and padding trims the end. Assuming a bare 12-byte
+/// header hands the codec parts of the header as audio whenever a peer uses
+/// either feature.
+pub(crate) fn parse_rtp(packet: &[u8]) -> Option<RtpPacket<'_>> {
+    if packet.len() < 12 || packet[0] >> 6 != 2 {
+        return None;
+    }
+
+    let has_padding = packet[0] & 0x20 != 0;
+    let has_extension = packet[0] & 0x10 != 0;
+    let csrc_count = (packet[0] & 0x0F) as usize;
+
+    let mut start = 12 + 4 * csrc_count;
+    if packet.len() < start {
+        return None;
+    }
+
+    if has_extension {
+        if packet.len() < start + 4 {
+            return None;
+        }
+        let words = u16::from_be_bytes([packet[start + 2], packet[start + 3]]) as usize;
+        start += 4 + 4 * words;
+        if packet.len() < start {
+            return None;
+        }
+    }
+
+    let mut end = packet.len();
+    if has_padding {
+        let pad = packet[end - 1] as usize;
+        if pad == 0 || pad > end - start {
+            return None;
+        }
+        end -= pad;
+    }
+
+    Some(RtpPacket {
+        payload_type: packet[1] & 0x7F,
+        sequence: u16::from_be_bytes([packet[2], packet[3]]),
+        payload: &packet[start..end],
+    })
+}
+
 /// Detected DTMF event
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
@@ -94,6 +155,12 @@ impl RtpReceiver {
 
         tokio::spawn(async move {
             let mut buf = [0u8; 2048];
+            // Symmetric-RTP latch: the first peer heard owns this session. Without
+            // it anything that can reach the port injects audio and DTMF into a
+            // live call. Learned rather than taken from the SDP, because NAT'd
+            // peers routinely send from a different port than they advertise.
+            let mut peer: Option<SocketAddr> = None;
+            let mut recording_full = false;
             loop {
                 // Check stop signal before each recv
                 if stop_flag.load(Ordering::Relaxed) {
@@ -109,15 +176,27 @@ impl RtpReceiver {
                 .await;
 
                 match recv_result {
-                    Ok(Ok((n, _src))) => {
-                        if n < 12 {
-                            continue;
+                    Ok(Ok((n, src))) => {
+                        match peer {
+                            None => {
+                                log::debug!("RTP stream latched to {}", src);
+                                peer = Some(src);
+                            }
+                            Some(known) if known != src => {
+                                log::debug!("Ignoring RTP packet from unexpected source {}", src);
+                                continue;
+                            }
+                            Some(_) => {}
                         }
-                        let pt = buf[1] & 0x7F;
 
-                        if pt == 101 {
+                        let rtp = match parse_rtp(&buf[..n]) {
+                            Some(rtp) => rtp,
+                            None => continue,
+                        };
+
+                        if rtp.payload_type == 101 {
                             // RFC 2833 telephone-event
-                            if let Some(dtmf) = parse_dtmf(&buf[12..n]) {
+                            if let Some(dtmf) = parse_dtmf(rtp.payload) {
                                 let mut digits = dtmf_buf.lock().await;
                                 let mut events = dtmf_events.lock().await;
                                 if dtmf.end
@@ -130,20 +209,31 @@ impl RtpReceiver {
                             }
                         } else {
                             // Audio packet — decode first
-                            let payload = &buf[12..n];
-                            if let Ok(samples) = codec.decode(payload) {
+                            if let Ok(samples) = codec.decode(rtp.payload) {
                                 let active = *recording_active.lock().await;
                                 if active {
-                                    recording.lock().await.extend(&samples);
+                                    let mut rec = recording.lock().await;
+                                    let room = MAX_RECORDING_SAMPLES.saturating_sub(rec.len());
+                                    if room >= samples.len() {
+                                        rec.extend(&samples);
+                                    } else {
+                                        rec.extend(&samples[..room]);
+                                        if !recording_full {
+                                            recording_full = true;
+                                            log::warn!(
+                                                "Recording buffer full ({} samples); \
+                                                 dropping further audio until recording is stopped",
+                                                MAX_RECORDING_SAMPLES
+                                            );
+                                        }
+                                    }
                                 }
                                 if let Some(ref tx) = audio_tx {
                                     let _ = tx.send(samples);
                                 }
                             }
 
-                            // Track sequence
-                            let seq = u16::from_be_bytes([buf[2], buf[3]]);
-                            *last_seq.lock().await = Some(seq);
+                            *last_seq.lock().await = Some(rtp.sequence);
                         }
                     }
                     Ok(Err(e)) => {
@@ -350,4 +440,99 @@ pub fn save_wav(samples: &[i16], sample_rate: u32, path: &str) -> Result<()> {
     }
     writer.flush()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn header(first_byte: u8, payload_type: u8, seq: u16) -> Vec<u8> {
+        let mut p = vec![first_byte, payload_type];
+        p.extend_from_slice(&seq.to_be_bytes());
+        p.extend_from_slice(&0u32.to_be_bytes()); // timestamp
+        p.extend_from_slice(&0u32.to_be_bytes()); // ssrc
+        p
+    }
+
+    #[test]
+    fn parses_a_plain_packet() {
+        let mut p = header(0x80, 0, 42);
+        p.extend_from_slice(&[1, 2, 3, 4]);
+        let rtp = parse_rtp(&p).expect("should parse");
+        assert_eq!(rtp.payload_type, 0);
+        assert_eq!(rtp.sequence, 42);
+        assert_eq!(rtp.payload, &[1, 2, 3, 4]);
+    }
+
+    /// CSRC entries push the payload back by 4 bytes each; a fixed 12-byte
+    /// offset would hand the codec part of the header as audio.
+    #[test]
+    fn skips_csrc_entries() {
+        let mut p = header(0x82, 8, 1); // CC = 2
+        p.extend_from_slice(&[0xAA; 8]);
+        p.extend_from_slice(&[1, 2, 3, 4]);
+        let rtp = parse_rtp(&p).expect("should parse");
+        assert_eq!(rtp.payload, &[1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn skips_header_extension() {
+        let mut p = header(0x90, 8, 1); // X = 1
+        p.extend_from_slice(&[0xBE, 0xDE, 0x00, 0x01]); // profile + 1 word
+        p.extend_from_slice(&[0xCC; 4]);
+        p.extend_from_slice(&[1, 2, 3, 4]);
+        let rtp = parse_rtp(&p).expect("should parse");
+        assert_eq!(rtp.payload, &[1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn trims_padding() {
+        let mut p = header(0xA0, 8, 1); // P = 1
+        p.extend_from_slice(&[1, 2, 3, 4]);
+        p.extend_from_slice(&[0, 0, 3]); // 3 padding bytes, last one is the count
+        let rtp = parse_rtp(&p).expect("should parse");
+        assert_eq!(rtp.payload, &[1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn rejects_malformed_packets() {
+        assert!(parse_rtp(&[]).is_none());
+        assert!(parse_rtp(&[0x80; 11]).is_none(), "short header");
+        assert!(parse_rtp(&header(0x00, 0, 1)).is_none(), "wrong version");
+        assert!(
+            parse_rtp(&header(0x8F, 0, 1)).is_none(),
+            "CC claims more CSRCs than the packet holds"
+        );
+        assert!(
+            parse_rtp(&header(0x90, 0, 1)).is_none(),
+            "X set but no extension header"
+        );
+
+        let mut over_padded = header(0xA0, 8, 1);
+        over_padded.extend_from_slice(&[1, 2, 9]); // claims 9 bytes of padding
+        assert!(parse_rtp(&over_padded).is_none());
+
+        let mut zero_pad = header(0xA0, 8, 1);
+        zero_pad.extend_from_slice(&[1, 2, 0]);
+        assert!(parse_rtp(&zero_pad).is_none());
+    }
+
+    #[test]
+    fn accepts_an_empty_payload() {
+        let packet = header(0x80, 8, 7);
+        let rtp = parse_rtp(&packet).expect("should parse");
+        assert!(rtp.payload.is_empty());
+        assert_eq!(rtp.sequence, 7);
+    }
+
+    #[test]
+    fn parse_dtmf_reads_event_and_end_bit() {
+        let event = parse_dtmf(&[5, 0x8A, 0x01, 0xE0]).expect("should parse");
+        assert_eq!(event.digit, '5');
+        assert!(event.end);
+        assert_eq!(event.duration, 480);
+
+        assert!(parse_dtmf(&[1, 0, 0]).is_none(), "short payload");
+        assert!(parse_dtmf(&[99, 0, 0, 0]).is_none(), "unknown event");
+    }
 }

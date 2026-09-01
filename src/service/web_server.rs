@@ -51,6 +51,23 @@ pub struct AccountStatus {
     pub audio_output_device: Option<String>,
 }
 
+/// Compare a secret without an early exit on the first differing byte.
+///
+/// `==` on tokens and passwords returns as soon as two bytes differ, which
+/// leaks how much of a guess was correct. The length is still observable, but
+/// the contents are not.
+pub fn secret_eq(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
 /// Helper to verify Authorization header token
 pub fn verify_token(headers: &HeaderMap, state: &AppState) -> Result<(), StatusCode> {
     let token = headers
@@ -59,7 +76,7 @@ pub fn verify_token(headers: &HeaderMap, state: &AppState) -> Result<(), StatusC
         .and_then(|h| h.strip_prefix("Bearer "));
 
     if let Some(tok) = token {
-        if tok == state.session_token {
+        if secret_eq(tok, &state.session_token) {
             return Ok(());
         }
     }
@@ -184,5 +201,21 @@ pub async fn start_web_server(state: AppState, port: u16) {
 
     if let Err(e) = axum::serve(listener, app).await {
         log::error!("Axum web server error: {}", e);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::secret_eq;
+
+    #[test]
+    fn secret_eq_matches_string_equality() {
+        assert!(secret_eq("s3cret", "s3cret"));
+        assert!(secret_eq("", ""));
+        assert!(!secret_eq("s3cret", "s3crey"));
+        assert!(!secret_eq("s3cret", "s3cre"));
+        assert!(!secret_eq("", "x"));
+        assert!(!secret_eq("şifre", "sifre"));
+        assert!(secret_eq("şifre", "şifre"));
     }
 }

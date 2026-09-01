@@ -403,8 +403,12 @@ impl Config {
         Ok(())
     }
 
-    /// Validate configuration
-    fn validate(&self) -> anyhow::Result<()> {
+    /// Validate configuration.
+    ///
+    /// Called on load, and before persisting a config that arrived over the
+    /// web API — writing first and validating later leaves a broken config on
+    /// disk that the next start refuses to load.
+    pub(crate) fn validate(&self) -> anyhow::Result<()> {
         if let Some(ref syslog) = self.syslog {
             let p = syslog.protocol.to_lowercase();
             if p != "udp" && p != "tcp" && p != "unix" {
@@ -420,6 +424,12 @@ impl Config {
         }
 
         for (i, account) in self.accounts.iter().enumerate() {
+            if account.name.is_empty() {
+                anyhow::bail!("Account #{} has an empty name", i);
+            }
+            if self.accounts[..i].iter().any(|a| a.name == account.name) {
+                anyhow::bail!("Duplicate account name '{}'", account.name);
+            }
             if account.username.is_empty() {
                 anyhow::bail!("Account #{} ({}) has empty username", i, account.name);
             }
@@ -517,4 +527,93 @@ impl Config {
 
 fn ranges_overlap(a_start: u16, a_end: u16, b_start: u16, b_end: u16) -> bool {
     a_start <= b_end && b_start <= a_end
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(src: &str) -> Config {
+        toml::from_str(src).expect("config should parse")
+    }
+
+    const ONE_ACCOUNT: &str = r#"
+[[accounts]]
+name = "main"
+username = "1001"
+password = "secret"
+server = "192.168.1.1:5060"
+"#;
+
+    #[test]
+    fn accepts_a_minimal_config() {
+        assert!(parse(ONE_ACCOUNT).validate().is_ok());
+    }
+
+    /// The dashboard adds accounts by name, so two accounts sharing one is a
+    /// config whose running state cannot match its file.
+    #[test]
+    fn rejects_duplicate_account_names() {
+        let cfg = parse(
+            r#"
+[[accounts]]
+name = "main"
+username = "1001"
+password = "secret"
+server = "192.168.1.1:5060"
+
+[[accounts]]
+name = "main"
+username = "1002"
+password = "secret"
+server = "192.168.1.1:5060"
+"#,
+        );
+        let err = cfg
+            .validate()
+            .expect_err("duplicate name should be rejected");
+        assert!(
+            err.to_string().contains("Duplicate account name"),
+            "{}",
+            err
+        );
+    }
+
+    #[test]
+    fn rejects_empty_account_name() {
+        let cfg = parse(
+            r#"
+[[accounts]]
+name = ""
+username = "1001"
+password = "secret"
+server = "192.168.1.1:5060"
+"#,
+        );
+        assert!(cfg.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_inverted_rtp_range() {
+        let cfg = parse(
+            r#"
+[[accounts]]
+name = "main"
+username = "1001"
+password = "secret"
+server = "192.168.1.1:5060"
+rtp_port_start = 20000
+rtp_port_end = 10000
+"#,
+        );
+        assert!(cfg.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_a_config_with_no_accounts() {
+        // Deleting the last account through the dashboard would otherwise write
+        // a file that the next start refuses to load.
+        let cfg = parse("accounts = []");
+        assert!(cfg.validate().is_err());
+    }
 }

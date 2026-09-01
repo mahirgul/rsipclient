@@ -60,7 +60,10 @@ fn verify_auth(headers: &HeaderMap, state: &CommandsServerState) -> Result<(), S
         .as_deref()
         .unwrap_or(&state.fallback_web_password);
 
-    if username == expected_username && password == expected_password {
+    // Both comparisons always run — see secret_eq.
+    if crate::service::web_server::secret_eq(username, expected_username)
+        & crate::service::web_server::secret_eq(password, expected_password)
+    {
         Ok(())
     } else {
         Err(StatusCode::UNAUTHORIZED)

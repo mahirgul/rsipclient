@@ -20,8 +20,10 @@ pub async fn audio_ws_handler(
     ws: WebSocketUpgrade,
     axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let token = params.get("token").cloned();
-    if token.as_deref() != Some(&state.session_token) {
+    let authorized = params
+        .get("token")
+        .is_some_and(|token| super::super::web_server::secret_eq(token, &state.session_token));
+    if !authorized {
         return Err(StatusCode::UNAUTHORIZED);
     }
 
