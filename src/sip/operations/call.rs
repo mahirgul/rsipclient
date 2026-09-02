@@ -67,7 +67,7 @@ impl SipClient {
             let challenge = utils::extract_auth_challenge(&resp)
                 .context("Cannot extract WWW-Authenticate params for INVITE")?;
 
-            let auth_cseq = self.next_cseq().await;
+            let mut auth_cseq = self.next_cseq().await;
             let auth_msg = build_invite_with_auth(
                 target_uri,
                 &self.username,
@@ -85,8 +85,35 @@ impl SipClient {
                 self.transport.via_str(),
             );
 
-            let resp2 = self.send(&auth_msg).await?;
-            let status2 = utils::parse_status_code(&resp2)?;
+            let mut resp2 = self.send(&auth_msg).await?;
+            let mut status2 = utils::parse_status_code(&resp2)?;
+
+            // A proxy whose nonce expired answers stale=true with a fresh one;
+            // without this retry the call simply fails and nothing re-places it.
+            if let Some(fresh) = super::register::stale_retry_challenge(status2, &resp2) {
+                log::info!("INVITE nonce was stale, retrying with the fresh one");
+                let retry_cseq = self.next_cseq().await;
+                let retry_msg = build_invite_with_auth(
+                    target_uri,
+                    &self.username,
+                    &self.password,
+                    &self.domain,
+                    &local,
+                    &self.local_tag,
+                    &self.new_branch(),
+                    &call_id,
+                    retry_cseq,
+                    &sdp_body,
+                    &fresh,
+                    &self.settings,
+                    self.transport.via_str(),
+                );
+                resp2 = self.send(&retry_msg).await?;
+                status2 = utils::parse_status_code(&resp2)?;
+                // The ACK and the dialog's CSeq must track the request that was
+                // actually answered.
+                auth_cseq = retry_cseq;
+            }
 
             let mut final_status2 = status2;
             let mut final_resp2 = resp2.clone();

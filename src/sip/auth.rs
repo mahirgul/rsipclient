@@ -86,9 +86,16 @@ pub fn build_authorization_header(
         (r, String::new())
     };
 
+    // A 407 challenge is the proxy's and must be answered on its own header.
+    let header_name = if challenge.proxy {
+        "Proxy-Authorization"
+    } else {
+        "Authorization"
+    };
+
     let mut header = format!(
-        "Authorization: Digest username=\"{}\", realm=\"{}\", nonce=\"{}\", uri=\"{}\", response=\"{}\", algorithm=MD5",
-        username, challenge.realm, challenge.nonce, uri, response
+        "{}: Digest username=\"{}\", realm=\"{}\", nonce=\"{}\", uri=\"{}\", response=\"{}\", algorithm=MD5",
+        header_name, username, challenge.realm, challenge.nonce, uri, response
     );
     if !qop_part.is_empty() {
         header.push_str(&format!(", {}", qop_part));
@@ -102,6 +109,42 @@ pub fn build_authorization_header(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn challenge(proxy: bool) -> AuthChallenge {
+        AuthChallenge {
+            realm: "example.com".to_string(),
+            nonce: "abc123".to_string(),
+            opaque: None,
+            qop: None,
+            algorithm: None,
+            stale: false,
+            proxy,
+        }
+    }
+
+    /// RFC 3261 §22.3: a proxy challenge is answered on the proxy header.
+    #[test]
+    fn proxy_challenge_uses_the_proxy_authorization_header() {
+        let header =
+            build_authorization_header("bob", "pw", &challenge(true), "INVITE", "sip:example.com");
+        assert!(
+            header.starts_with("Proxy-Authorization: Digest "),
+            "{}",
+            header
+        );
+    }
+
+    #[test]
+    fn server_challenge_uses_the_authorization_header() {
+        let header = build_authorization_header(
+            "bob",
+            "pw",
+            &challenge(false),
+            "REGISTER",
+            "sip:example.com",
+        );
+        assert!(header.starts_with("Authorization: Digest "), "{}", header);
+    }
 
     #[test]
     fn test_compute_digest() {

@@ -43,9 +43,14 @@ pub struct AuthChallenge {
     /// Parsed but not yet acted on (reserved for MD5-sess / stale-nonce retry).
     #[allow(dead_code)]
     pub algorithm: Option<String>,
-    /// Parsed but not yet acted on (reserved for stale-nonce retry).
-    #[allow(dead_code)]
+    /// Set when the server says the nonce expired; the same credentials retried
+    /// against the fresh nonce are expected to succeed.
     pub stale: bool,
+    /// True when the challenge arrived in Proxy-Authenticate. RFC 3261 §22.3
+    /// requires answering it with Proxy-Authorization, not Authorization —
+    /// a proxy that gets the wrong header challenges again and the call or
+    /// registration never completes.
+    pub proxy: bool,
 }
 
 impl AuthChallenge {
@@ -58,30 +63,57 @@ impl AuthChallenge {
     }
 }
 
-/// Parse a full Digest challenge from WWW-Authenticate / Proxy-Authenticate.
-pub fn extract_auth_challenge(response: &str) -> Option<AuthChallenge> {
-    let header = response.lines().find(|l| {
-        starts_with_ascii_ci(l, "www-authenticate:")
-            || starts_with_ascii_ci(l, "proxy-authenticate:")
-    })?;
-
-    let realm = extract_quoted(header, "realm=")?;
-    let nonce = extract_quoted(header, "nonce=")?;
-    let opaque = extract_quoted(header, "opaque=");
-    let qop = extract_quoted(header, "qop=");
-    let algorithm = extract_quoted(header, "algorithm=");
-    let stale = extract_quoted(header, "stale=")
-        .map(|s| s.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
-
+/// Parse one challenge header line. Returns None for a header this client
+/// cannot answer, such as a Basic challenge carrying no nonce.
+fn parse_challenge_line(header: &str, proxy: bool) -> Option<AuthChallenge> {
     Some(AuthChallenge {
-        realm,
-        nonce,
-        opaque,
-        qop,
-        algorithm,
-        stale,
+        realm: extract_quoted(header, "realm=")?,
+        nonce: extract_quoted(header, "nonce=")?,
+        opaque: extract_quoted(header, "opaque="),
+        qop: extract_quoted(header, "qop="),
+        algorithm: extract_quoted(header, "algorithm="),
+        stale: extract_quoted(header, "stale=")
+            .map(|s| s.eq_ignore_ascii_case("true"))
+            .unwrap_or(false),
+        proxy,
     })
+}
+
+/// Parse a Digest challenge from WWW-Authenticate / Proxy-Authenticate.
+///
+/// A response can carry several challenges — a proxy and the registrar each
+/// add their own, and a server may offer a scheme this client cannot answer.
+/// Prefer the one matching the status code (407 is the proxy's), and skip
+/// headers that do not parse as a Digest challenge instead of giving up on the
+/// first one.
+pub fn extract_auth_challenge(response: &str) -> Option<AuthChallenge> {
+    let prefer_proxy = parse_status_code(response)
+        .map(|s| s == 407)
+        .unwrap_or(false);
+    let mut fallback = None;
+
+    for line in response.lines() {
+        let proxy = if starts_with_ascii_ci(line, "proxy-authenticate:") {
+            true
+        } else if starts_with_ascii_ci(line, "www-authenticate:") {
+            false
+        } else {
+            continue;
+        };
+
+        let Some(challenge) = parse_challenge_line(line, proxy) else {
+            continue;
+        };
+
+        if proxy == prefer_proxy {
+            return Some(challenge);
+        }
+        if fallback.is_none() {
+            fallback = Some(challenge);
+        }
+    }
+
+    fallback
 }
 
 /// Match a SIP header line against a full header name or its compact alias.
@@ -354,6 +386,54 @@ mod tests {
     fn extract_to_tag_reads_tag_from_to_line() {
         let resp = "SIP/2.0 200 OK\r\nTo: <sip:a@b>;tag=as12345\r\n\r\n";
         assert_eq!(extract_to_tag(resp), Some("as12345".to_string()));
+    }
+
+    /// A 407 is the proxy's challenge; answering the registrar's WWW-Authenticate
+    /// instead leaves the proxy challenging forever.
+    #[test]
+    fn extract_auth_challenge_prefers_the_header_matching_the_status() {
+        let both = "WWW-Authenticate: Digest realm=\"registrar\", nonce=\"aaa\"\r\n\
+                    Proxy-Authenticate: Digest realm=\"proxy\", nonce=\"bbb\"\r\n\r\n";
+
+        let proxied = format!("SIP/2.0 407 Proxy Authentication Required\r\n{}", both);
+        let challenge = extract_auth_challenge(&proxied).expect("challenge");
+        assert_eq!(challenge.realm, "proxy");
+        assert!(challenge.proxy);
+
+        let unauthorized = format!("SIP/2.0 401 Unauthorized\r\n{}", both);
+        let challenge = extract_auth_challenge(&unauthorized).expect("challenge");
+        assert_eq!(challenge.realm, "registrar");
+        assert!(!challenge.proxy);
+    }
+
+    /// Falls back to the other kind when the matching one is absent.
+    #[test]
+    fn extract_auth_challenge_falls_back_to_the_other_header() {
+        let resp = "SIP/2.0 407 Proxy Authentication Required\r\n\
+                    WWW-Authenticate: Digest realm=\"registrar\", nonce=\"aaa\"\r\n\r\n";
+        let challenge = extract_auth_challenge(resp).expect("challenge");
+        assert_eq!(challenge.realm, "registrar");
+        assert!(!challenge.proxy);
+    }
+
+    /// A challenge this client cannot answer must not hide a usable one behind it.
+    #[test]
+    fn extract_auth_challenge_skips_challenges_without_a_nonce() {
+        let resp = "SIP/2.0 401 Unauthorized\r\n\
+                    WWW-Authenticate: Basic realm=\"legacy\"\r\n\
+                    WWW-Authenticate: Digest realm=\"sip.example.com\", nonce=\"deadbeef\"\r\n\r\n";
+        let challenge = extract_auth_challenge(resp).expect("challenge");
+        assert_eq!(challenge.realm, "sip.example.com");
+        assert_eq!(challenge.nonce, "deadbeef");
+    }
+
+    #[test]
+    fn extract_auth_challenge_returns_none_without_a_usable_challenge() {
+        assert!(extract_auth_challenge("SIP/2.0 401 Unauthorized\r\n\r\n").is_none());
+        assert!(extract_auth_challenge(
+            "SIP/2.0 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"x\"\r\n\r\n"
+        )
+        .is_none());
     }
 
     #[test]

@@ -10,6 +10,7 @@ kullanılmak üzere hazırlanmıştır.
 | Faz | Kapsam | Durum |
 |-----|--------|-------|
 | 1 | Somut bug'lar (7 kalem) | ✅ Tamamlandı (commit `9a6c38c`) |
+| 1b | Auth doğruluğu + servis sertleştirme (küçük kalemler) | ✅ Tamamlandı (v2.5.0) |
 | 2 | Mimari (transaction layer, session timers, PRACK) | ⬜ Bekliyor |
 | 3 | İleri (NAT traversal, SRTP, SDP parser) | ⬜ Bekliyor |
 
@@ -35,6 +36,50 @@ Aşağıdaki 7 kalem uygulandı ve `cargo fmt` / `cargo clippy -D warnings` /
    `format_from`/`extra_headers` sanitizasyonu; `config::validate` control-char reddi.
 7. **Gelen CANCEL** — kurulum sırasında yarışan CANCEL'e 200 OK + temizlik
    (`service/watcher/incoming_call.rs`).
+
+---
+
+## Faz 1b — Tamamlandı (v2.5.0)
+
+Ayrıştırma/servis katmanındaki somut bug'lar ve "Notlar" başlığındaki küçük
+auth kalemleri. `cargo fmt` / `cargo clippy -D warnings` / `cargo test`
+(62 test) ile doğrulandı.
+
+1. **Uzaktan tetiklenebilen panic** — `extract_quoted` küçük harfe çevrilmiş
+   kopyanın ofsetiyle orijinal satırı dilimliyordu; çok baytlı bir karakter
+   (`İ`) ofseti kaydırıp karakter ortasından kesiyordu. Çok baytlı From
+   display-name taşıyan bir INVITE, gelen çağrı watcher'ını öldürüyor ve hesap
+   yeniden başlatmaya kadar çağrı karşılayamıyordu. Artık tüm başlık/parametre
+   eşleşmesi orijinal dize üzerinde ASCII-duyarsız yapılıyor.
+2. **Parametre sınırı** — `extract_quoted` anahtarı serbest alt dize olarak
+   arıyordu; display-name içindeki `tag=` gerçek parametreyi gölgeleyebiliyordu.
+3. **CRLF enjeksiyonu** — çağrı/transfer/mesaj hedefleri ve INFO DTMF hanesi
+   doğrulanmadan istek satırına giriyordu (`validate_header_value`,
+   `validate_dtmf_digit`; REST + IPC + CLI yollarının tamamı).
+4. **`Content-Disposition` panic'i** — ASCII olmayan dosya adı (`kayıt.wav`)
+   başlık kurarken `unwrap()` ile çöküyordu; artık RFC 5987 `filename*`.
+5. **RTP kaynak filtresi** — simetrik-RTP latch'i; porta erişebilen üçüncü bir
+   taraf artık canlı çağrıya ses/DTMF enjekte edemiyor.
+6. **RTP başlık ayrıştırma** — CSRC/uzantı/padding hesaba katılıyor (sabit
+   12 bayt varsayımı codec'e başlık baytlarını ses diye veriyordu); version≠2
+   ve paketi aşan alanlar eleniyor. Kayıt tamponu 30 dk ile sınırlı.
+7. **Plugin script dizini** — okuma yolunda da `.rhai/.lua` zorunlu ve
+   çözümlenen yol script dizininin altında kalmak zorunda (sembolik bağ kaçışı).
+8. **Config sırası** — dashboard artık doğrula → uygula → yaz sırasında
+   çalışıyor; başarısız tek hesap diğerlerini düşürmüyor (`failed_accounts`),
+   başarısız düzenleme eski istemciyi geri getiriyor.
+9. **Sabit zamanlı karşılaştırma** — token/parola karşılaştırmaları erken
+   çıkışsız ve kısa devresiz (`secret_eq`).
+10. **`Proxy-Authorization`** — 407 challenge'ı artık proxy başlığıyla
+    yanıtlanıyor (RFC 3261 §22.3); önceden `Authorization` gönderiliyordu ve
+    proxy yeniden challenge ediyordu.
+11. **Çoklu challenge** — `extract_auth_challenge` tüm challenge başlıklarını
+    tarıyor, status koduna uyanı (407 → proxy) tercih ediyor ve
+    yanıtlanamayan bir challenge'ın (nonce'suz Basic) arkasındaki kullanılabilir
+    olanı atlamıyor.
+12. **`stale=true` yeniden deneme** — REGISTER/UNREGISTER/INVITE, süresi dolmuş
+    nonce için taze nonce'la bir kez yeniden deneniyor
+    (`stale_retry_challenge`); düz reddedilmeler yeniden denenmiyor.
 
 ---
 
@@ -127,13 +172,17 @@ Yapılacaklar:
   müzakere (uzak SDP'ye göre codec seçip RTP gönderim/alım yoluna taşımak)
   `ManagedClient`'taki sabit `codec` alanının yeniden yapılandırılmasını gerektirir.
   Faz 2'de transaction layer ile birlikte ele alınabilir.
-- **Çoklu `WWW-Authenticate` challenge** — `extract_auth_challenge` (`sip/utils.rs`)
-  sadece ilk challenge header'ını okur; birden çok realm denemesi desteklenmiyor.
-- **`stale=true` yeniden deneme** — `AuthChallenge.stale` parse ediliyor ama
-  henüz kullanılmıyor (`#[allow(dead_code)]`); yeni nonce ile tekrar gönderim yapılabilir.
-- **Incoming CANCEL → 487** — Şu an CANCEL'e 200 OK dönülüyor; RFC'ye göre orijinal
-  INVITE'a henüz final yanıt verilmediyse 487 dönülmesi gerekir (auto-answer 200 OK'u
-  hemen gönderdiği için bu bir yarış durumu).
+- **Çoklu realm denemesi** — challenge seçimi Faz 1b'de düzeltildi, ancak bir
+  realm reddettiğinde diğer challenge ile sırayla yeniden deneme hâlâ yok
+  (`sip/utils.rs`, `operations/*`). Transaction layer sonrası ele alınması kolay.
+- **Incoming CANCEL → 487 (geçerli değil)** — Bu not yanlıştı: auto-answer 200 OK'u
+  CANCEL bekleme döngüsünden **önce** gönderiyor (`watcher/incoming_call.rs`), yani
+  INVITE'a final yanıt verilmiş oluyor. Bu durumda CANCEL'e 200 OK dönmek doğru;
+  487 göndermek ikinci bir final yanıt olur ve RFC'ye aykırıdır. 487, ancak
+  auto-answer'dan önce CANCEL yakalanacak şekilde akış değiştirilirse anlamlı olur
+  (transaction layer ile birlikte).
+- **Hold/transfer için `stale` yeniden deneme** — REGISTER/INVITE'a eklendi;
+  `hold_transfer.rs` ve `transfer.rs` yollarında henüz yok.
 - **Testler** — Mesaj builder'ları için testler mevcut; parser'a fuzz target ve
   transport/transaction için entegrasyon testleri (SIPp benzeri) eklenmesi değerli.
 
