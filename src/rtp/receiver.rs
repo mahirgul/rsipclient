@@ -15,6 +15,14 @@ use tokio::sync::Mutex;
 /// bound.
 const MAX_RECORDING_SAMPLES: usize = 8_000 * 60 * 30;
 
+/// Cap on buffered DTMF collected from the peer.
+///
+/// Both buffers are drained by whoever asked for the digits — the IVR session,
+/// or nobody at all when the account auto-answers without a menu. A peer that
+/// keeps sending telephone-events would otherwise grow them for the whole call.
+/// Far more than any menu reads, and old entries give way to new ones.
+const MAX_DTMF_BUFFERED: usize = 512;
+
 /// The RTP header fields the receive loop acts on.
 pub(crate) struct RtpPacket<'a> {
     pub payload_type: u8,
@@ -203,7 +211,13 @@ impl RtpReceiver {
                                     && !dtmf.digit.is_whitespace()
                                     && !digits.ends_with(dtmf.digit)
                                 {
+                                    if digits.chars().count() >= MAX_DTMF_BUFFERED {
+                                        digits.remove(0);
+                                    }
                                     digits.push(dtmf.digit);
+                                }
+                                if events.len() >= MAX_DTMF_BUFFERED {
+                                    events.remove(0);
                                 }
                                 events.push(dtmf);
                             }

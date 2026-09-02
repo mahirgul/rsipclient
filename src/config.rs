@@ -438,8 +438,14 @@ impl Config {
             }
 
             // Reject control characters in values that are interpolated into
-            // SIP headers (display name, identity URIs, custom User-Agent).
+            // SIP headers (display name, identity URIs, custom User-Agent) and
+            // into the request line itself (username, domain, server). The
+            // dashboard writes accounts, so a CR/LF here would inject headers
+            // or smuggle a second request into every REGISTER and INVITE.
             for (field, value) in [
+                ("username", Some(account.username.as_str())),
+                ("domain", Some(account.domain.as_str())),
+                ("server", Some(account.server.as_str())),
                 ("display_name", account.display_name.as_deref()),
                 ("asserted_id", account.asserted_id.as_deref()),
                 ("preferred_id", account.preferred_id.as_deref()),
@@ -454,6 +460,29 @@ impl Config {
                             field
                         );
                     }
+                }
+            }
+
+            // `username`, `domain` and `server` become the request URI and the
+            // From/To/Contact URIs verbatim. Whitespace or a bracket there
+            // ends the URI early and turns the rest of the value into
+            // attacker-chosen request-line or header content.
+            for (field, value) in [
+                ("username", account.username.as_str()),
+                ("domain", account.domain.as_str()),
+                ("server", account.server.as_str()),
+            ] {
+                if let Some(bad) = value
+                    .chars()
+                    .find(|c| c.is_whitespace() || matches!(c, '<' | '>' | '"'))
+                {
+                    anyhow::bail!(
+                        "Account #{} ({}) {} contains an illegal character '{}'",
+                        i,
+                        account.name,
+                        field,
+                        bad
+                    );
                 }
             }
 
@@ -607,6 +636,46 @@ rtp_port_end = 10000
 "#,
         );
         assert!(cfg.validate().is_err());
+    }
+
+    /// `username`/`domain`/`server` are interpolated into the request line and
+    /// the From/To/Contact URIs, so a CR/LF or a bracket there injects headers
+    /// into every request the account sends.
+    #[test]
+    fn rejects_injection_in_uri_fields() {
+        for (field, value) in [
+            ("username", "1001\r\nSubject: injected"),
+            ("username", "1001 evil"),
+            ("domain", "example.com\r\nX: y"),
+            ("domain", "example.com>"),
+            ("server", "1.2.3.4:5060\r\nX: y"),
+            ("server", "\"1.2.3.4:5060\""),
+        ] {
+            let (mut username, mut domain, mut server) =
+                ("1001", "example.com", "192.168.1.1:5060");
+            match field {
+                "username" => username = value,
+                "domain" => domain = value,
+                _ => server = value,
+            }
+            let cfg = parse(&format!(
+                r#"
+[[accounts]]
+name = "main"
+password = "secret"
+username = {:?}
+domain = {:?}
+server = {:?}
+"#,
+                username, domain, server
+            ));
+            assert!(
+                cfg.validate().is_err(),
+                "{} = {:?} should be rejected",
+                field,
+                value
+            );
+        }
     }
 
     #[test]

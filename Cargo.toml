@@ -1,6 +1,6 @@
 [package]
 name = "rsipclient"
-version = "2.5.0"
+version = "2.5.1"
 edition = "2021"
 description = "Multi-account SIP client with IVR/auto-attendant, DTMF detection, call transfer, recording, and JSON TCP control — all in a single Rust binary"
 license = "MIT"
