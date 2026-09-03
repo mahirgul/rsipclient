@@ -26,15 +26,32 @@ pub fn build_register(
         "sip"
     };
 
+    let instance_uuid = {
+        let digest = md5::compute(format!("{}:{}", username, domain));
+        let hex = format!("{:x}", digest);
+        format!(
+            "{}-{}-{}-{}-{}",
+            &hex[0..8],
+            &hex[8..12],
+            &hex[12..16],
+            &hex[16..20],
+            &hex[20..32]
+        )
+    };
+    let contact = format!(
+        "<{}:{}@{}>;reg-id=1;+sip.instance=\"<urn:uuid:{}>\"",
+        scheme, username, local_addr, instance_uuid
+    );
+
     let msg = format!(
         "REGISTER sip:{} SIP/2.0\r\n\
-         Via: SIP/2.0/{} {};branch={}\r\n\
+         Via: SIP/2.0/{} {};branch={};rport\r\n\
          Max-Forwards: 70\r\n\
          From: {};tag={}\r\n\
          To: <sip:{}@{}>\r\n\
          Call-ID: {}\r\n\
          CSeq: {} REGISTER\r\n\
-         Contact: <{}:{}@{}>\r\n\
+         Contact: {}\r\n\
          Expires: {}\r\n\
          {}Content-Length: 0\r\n\
          \r\n",
@@ -48,9 +65,7 @@ pub fn build_register(
         domain,
         call_id,
         cseq,
-        scheme,
-        username,
-        local_addr,
+        contact,
         expiry,
         extra,
     );
@@ -83,15 +98,32 @@ pub fn build_register_with_auth(
         "sip"
     };
 
+    let instance_uuid = {
+        let digest = md5::compute(format!("{}:{}", username, domain));
+        let hex = format!("{:x}", digest);
+        format!(
+            "{}-{}-{}-{}-{}",
+            &hex[0..8],
+            &hex[8..12],
+            &hex[12..16],
+            &hex[16..20],
+            &hex[20..32]
+        )
+    };
+    let contact = format!(
+        "<{}:{}@{}>;reg-id=1;+sip.instance=\"<urn:uuid:{}>\"",
+        scheme, username, local_addr, instance_uuid
+    );
+
     format!(
         "REGISTER sip:{} SIP/2.0\r\n\
-         Via: SIP/2.0/{} {};branch={}\r\n\
+         Via: SIP/2.0/{} {};branch={};rport\r\n\
          Max-Forwards: 70\r\n\
          From: {};tag={}\r\n\
          To: <sip:{}@{}>\r\n\
          Call-ID: {}\r\n\
          CSeq: {} REGISTER\r\n\
-         Contact: <{}:{}@{}>\r\n\
+         Contact: {}\r\n\
          {}\r\n\
          Expires: {}\r\n\
          {}Content-Length: 0\r\n\
@@ -106,9 +138,7 @@ pub fn build_register_with_auth(
         domain,
         call_id,
         cseq,
-        scheme,
-        username,
-        local_addr,
+        contact,
         auth_header,
         expiry,
         extra,

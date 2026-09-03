@@ -16,6 +16,7 @@ pub mod messages;
 pub mod operations;
 pub mod sdp;
 pub mod settings;
+pub mod transaction;
 pub mod transfer;
 pub mod transport;
 pub mod utils;
@@ -23,3 +24,5 @@ pub mod utils;
 // Re-exports
 pub use client::{AuthMethod, SipClient};
 pub use settings::SipSettings;
+#[allow(unused_imports)]
+pub use transaction::{TransactionKey, TransactionManager, TransactionState};

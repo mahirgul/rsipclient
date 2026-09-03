@@ -26,7 +26,7 @@ pub fn build_refer(
 
     format!(
         "REFER {} SIP/2.0\r\n\
-         Via: SIP/2.0/{} {};branch={}\r\n\
+         Via: SIP/2.0/{} {};branch={};rport\r\n\
          Max-Forwards: 70\r\n\
          From: {};tag={}\r\n\
          To: <{}>;tag={}\r\n\
@@ -83,7 +83,7 @@ pub fn build_refer_with_auth(
 
     format!(
         "REFER {} SIP/2.0\r\n\
-         Via: SIP/2.0/{} {};branch={}\r\n\
+         Via: SIP/2.0/{} {};branch={};rport\r\n\
          Max-Forwards: 70\r\n\
          From: {};tag={}\r\n\
          To: <{}>;tag={}\r\n\
@@ -146,7 +146,7 @@ pub fn build_attended_refer(
 
     format!(
         "REFER {} SIP/2.0\r\n\
-         Via: SIP/2.0/{} {};branch={}\r\n\
+         Via: SIP/2.0/{} {};branch={};rport\r\n\
          Max-Forwards: 70\r\n\
          From: {};tag={}\r\n\
          To: <{}>;tag={}\r\n\
@@ -309,7 +309,7 @@ fn build_hold_inner(
 
     format!(
         "INVITE {} SIP/2.0\r\n\
-         Via: SIP/2.0/{} {};branch={}\r\n\
+         Via: SIP/2.0/{} {};branch={};rport\r\n\
          Max-Forwards: 70\r\n\
          From: {};tag={}\r\n\
          To: <{}>;tag={}\r\n\

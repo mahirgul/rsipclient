@@ -25,7 +25,7 @@ pub fn build_prack(
 
     format!(
         "PRACK {} SIP/2.0\r\n\
-         Via: SIP/2.0/{} {};branch={}\r\n\
+         Via: SIP/2.0/{} {};branch={};rport\r\n\
          Max-Forwards: 70\r\n\
          From: {};tag={}\r\n\
          To: <{}>;tag={}\r\n\
@@ -68,7 +68,7 @@ pub fn build_message(
 
     format!(
         "MESSAGE {} SIP/2.0\r\n\
-         Via: SIP/2.0/{} {};branch={}\r\n\
+         Via: SIP/2.0/{} {};branch={};rport\r\n\
          Max-Forwards: 70\r\n\
          From: {};tag={}\r\n\
          To: <{}>\r\n\
@@ -114,7 +114,7 @@ pub fn build_info_dtmf(
 
     format!(
         "INFO {} SIP/2.0\r\n\
-         Via: SIP/2.0/{} {};branch={}\r\n\
+         Via: SIP/2.0/{} {};branch={};rport\r\n\
          Max-Forwards: 70\r\n\
          From: {};tag={}\r\n\
          To: <{}>;tag={}\r\n\
@@ -159,7 +159,7 @@ pub fn build_subscribe(
 
     format!(
         "SUBSCRIBE {} SIP/2.0\r\n\
-         Via: SIP/2.0/{} {};branch={}\r\n\
+         Via: SIP/2.0/{} {};branch={};rport\r\n\
          Max-Forwards: 70\r\n\
          From: {};tag={}\r\n\
          To: <{}>\r\n\

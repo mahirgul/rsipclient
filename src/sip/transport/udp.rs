@@ -2,10 +2,12 @@
 
 use anyhow::{Context, Result};
 use std::net::SocketAddr;
+use std::sync::{Arc, RwLock};
 use tokio::net::UdpSocket;
 
 pub struct UdpTransport {
     socket: UdpSocket,
+    allowed_peer: Arc<RwLock<Option<SocketAddr>>>,
 }
 
 impl UdpTransport {
@@ -14,7 +16,17 @@ impl UdpTransport {
             .await
             .context("Failed to bind UDP socket")?;
         log::info!("UDP socket bound to {}", socket.local_addr()?);
-        Ok(Self { socket })
+        Ok(Self {
+            socket,
+            allowed_peer: Arc::new(RwLock::new(None)),
+        })
+    }
+
+    /// Set an allowed remote peer address to filter incoming packets (SIP spoofing protection).
+    pub fn set_peer_filter(&self, peer: SocketAddr) {
+        if let Ok(mut lock) = self.allowed_peer.write() {
+            *lock = Some(peer);
+        }
     }
 
     pub async fn send_to(&self, data: &[u8], target: SocketAddr) -> Result<usize> {
@@ -40,7 +52,7 @@ impl UdpTransport {
                 Err(_) => anyhow::bail!("Receive timed out"),
             };
 
-            let (n, _src) = match result {
+            let (n, src) = match result {
                 Ok(val) => val,
                 Err(ref e) if e.kind() == std::io::ErrorKind::ConnectionReset => {
                     log::debug!("Ignoring Windows UDP ConnectionReset error (WSAECONNRESET)");
@@ -48,6 +60,20 @@ impl UdpTransport {
                 }
                 Err(e) => anyhow::bail!("Failed to receive UDP packet: {}", e),
             };
+
+            // Source IP filter (SIP spoofing protection)
+            if let Ok(guard) = self.allowed_peer.read() {
+                if let Some(allowed) = *guard {
+                    if src.ip() != allowed.ip() {
+                        log::warn!(
+                            "Dropping untrusted/spoofed SIP UDP packet from {} (expected peer IP {})",
+                            src,
+                            allowed.ip()
+                        );
+                        continue;
+                    }
+                }
+            }
 
             let is_crlf_only = buf[..n].iter().all(|&b| b == b'\r' || b == b'\n');
             if is_crlf_only {
@@ -71,7 +97,21 @@ impl UdpTransport {
             .await;
 
             match result {
-                Ok(Ok((n, _src))) => {
+                Ok(Ok((n, src))) => {
+                    // Source IP filter (SIP spoofing protection)
+                    if let Ok(guard) = self.allowed_peer.read() {
+                        if let Some(allowed) = *guard {
+                            if src.ip() != allowed.ip() {
+                                log::warn!(
+                                    "Dropping untrusted/spoofed SIP UDP packet from {} in try_recv (expected peer IP {})",
+                                    src,
+                                    allowed.ip()
+                                );
+                                continue;
+                            }
+                        }
+                    }
+
                     let is_crlf_only = buf[..n].iter().all(|&b| b == b'\r' || b == b'\n');
                     if is_crlf_only {
                         log::debug!("Received UDP keep-alive/CRLF packet in try_recv, ignoring.");

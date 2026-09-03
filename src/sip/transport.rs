@@ -129,6 +129,13 @@ impl Transport {
         }
     }
 
+    /// Set a remote peer filter (e.g. source IP filtering for UDP SIP spoofing protection).
+    pub fn set_peer_filter(&self, peer: SocketAddr) {
+        if let Transport::Udp(ref udp) = self {
+            udp.set_peer_filter(peer);
+        }
+    }
+
     pub fn via_str(&self) -> &'static str {
         match self {
             Transport::Udp(_) => "UDP",

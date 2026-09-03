@@ -64,36 +64,14 @@ impl SipClient {
 
         // Handle 401/407 auth challenge for INVITE
         if (status == 401 || status == 407) && self.auth_method == crate::sip::AuthMethod::Md5 {
-            let challenge = utils::extract_auth_challenge(&resp)
-                .context("Cannot extract WWW-Authenticate params for INVITE")?;
+            let challenges = utils::extract_all_auth_challenges(&resp);
+            if challenges.is_empty() {
+                anyhow::bail!("Cannot extract WWW-Authenticate params for INVITE");
+            }
 
-            let mut auth_cseq = self.next_cseq().await;
-            let auth_msg = build_invite_with_auth(
-                target_uri,
-                &self.username,
-                &self.password,
-                &self.domain,
-                &local,
-                &self.local_tag,
-                &self.new_branch(),
-                // Reuse original Call-ID for auth retry (RFC 3261 §22.4)
-                &call_id,
-                auth_cseq,
-                &sdp_body,
-                &challenge,
-                &self.settings,
-                self.transport.via_str(),
-            );
-
-            let mut resp2 = self.send(&auth_msg).await?;
-            let mut status2 = utils::parse_status_code(&resp2)?;
-
-            // A proxy whose nonce expired answers stale=true with a fresh one;
-            // without this retry the call simply fails and nothing re-places it.
-            if let Some(fresh) = super::register::stale_retry_challenge(status2, &resp2) {
-                log::info!("INVITE nonce was stale, retrying with the fresh one");
-                let retry_cseq = self.next_cseq().await;
-                let retry_msg = build_invite_with_auth(
+            for challenge in challenges {
+                let mut auth_cseq = self.next_cseq().await;
+                let auth_msg = build_invite_with_auth(
                     target_uri,
                     &self.username,
                     &self.password,
@@ -101,71 +79,105 @@ impl SipClient {
                     &local,
                     &self.local_tag,
                     &self.new_branch(),
+                    // Reuse original Call-ID for auth retry (RFC 3261 §22.4)
                     &call_id,
-                    retry_cseq,
+                    auth_cseq,
                     &sdp_body,
-                    &fresh,
+                    &challenge,
                     &self.settings,
                     self.transport.via_str(),
                 );
-                resp2 = self.send(&retry_msg).await?;
-                status2 = utils::parse_status_code(&resp2)?;
-                // The ACK and the dialog's CSeq must track the request that was
-                // actually answered.
-                auth_cseq = retry_cseq;
-            }
 
-            let mut final_status2 = status2;
-            let mut final_resp2 = resp2.clone();
-            let mut final_tag2 = utils::extract_to_tag(&resp2);
+                let mut resp2 = self.send(&auth_msg).await?;
+                let mut status2 = utils::parse_status_code(&resp2)?;
 
-            while (100..200).contains(&final_status2) {
-                log::info!(
-                    "Got provisional response {} (auth INVITE) — waiting for final...",
+                // A proxy whose nonce expired answers stale=true with a fresh one;
+                // without this retry the call simply fails and nothing re-places it.
+                if let Some(fresh) = super::register::stale_retry_challenge(status2, &resp2) {
+                    log::info!("INVITE nonce was stale, retrying with the fresh one");
+                    let retry_cseq = self.next_cseq().await;
+                    let retry_msg = build_invite_with_auth(
+                        target_uri,
+                        &self.username,
+                        &self.password,
+                        &self.domain,
+                        &local,
+                        &self.local_tag,
+                        &self.new_branch(),
+                        &call_id,
+                        retry_cseq,
+                        &sdp_body,
+                        &fresh,
+                        &self.settings,
+                        self.transport.via_str(),
+                    );
+                    resp2 = self.send(&retry_msg).await?;
+                    status2 = utils::parse_status_code(&resp2)?;
+                    // The ACK and the dialog's CSeq must track the request that was
+                    // actually answered.
+                    auth_cseq = retry_cseq;
+                }
+
+                let mut final_status2 = status2;
+                let mut final_resp2 = resp2.clone();
+                let mut final_tag2 = utils::extract_to_tag(&resp2);
+
+                while (100..200).contains(&final_status2) {
+                    log::info!(
+                        "Got provisional response {} (auth INVITE) — waiting for final...",
+                        final_status2
+                    );
+                    final_resp2 = match self.recv_extra(30000).await {
+                        Ok(r) => r,
+                        Err(e) => {
+                            log::error!("Error waiting for final response (auth INVITE): {}", e);
+                            self.remote_uri = None;
+                            return Ok(false);
+                        }
+                    };
+                    final_status2 = match utils::parse_status_code(&final_resp2) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            log::error!("Error parsing status (auth INVITE): {}", e);
+                            self.remote_uri = None;
+                            return Ok(false);
+                        }
+                    };
+                    if let Some(t) = utils::extract_to_tag(&final_resp2) {
+                        final_tag2 = Some(t);
+                    }
+                }
+
+                if final_status2 == 200 {
+                    self.call_id = Some(call_id.clone());
+                    self.invite_cseq = Some(auth_cseq);
+                    self.remote_tag = final_tag2;
+                    self.remote_rtp_addr =
+                        crate::service::watcher::parse_sdp_connection(&final_resp2);
+                    self.rtp_receiver = Some(receiver);
+                    self.rtp_port = Some(bound_rtp_port);
+                    self.in_call = true;
+                    sdp::warn_codec_mismatch(configured_codec, &final_resp2);
+                    self.call_start_time = Some(std::time::Instant::now());
+                    self.send_ack(target_uri, &local, &call_id, auth_cseq)
+                        .await?;
+                    log::info!(
+                        "Call established (with INVITE auth realm={})! Remote RTP: {:?}",
+                        challenge.realm,
+                        self.remote_rtp_addr
+                    );
+                    crate::service::logger::record_call_connect(&call_id);
+                    return Ok(true);
+                }
+
+                log::warn!(
+                    "Auth INVITE failed for realm={} (status={}), trying next challenge if available",
+                    challenge.realm,
                     final_status2
                 );
-                final_resp2 = match self.recv_extra(30000).await {
-                    Ok(r) => r,
-                    Err(e) => {
-                        log::error!("Error waiting for final response (auth INVITE): {}", e);
-                        self.remote_uri = None;
-                        return Ok(false);
-                    }
-                };
-                final_status2 = match utils::parse_status_code(&final_resp2) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        log::error!("Error parsing status (auth INVITE): {}", e);
-                        self.remote_uri = None;
-                        return Ok(false);
-                    }
-                };
-                if let Some(t) = utils::extract_to_tag(&final_resp2) {
-                    final_tag2 = Some(t);
-                }
             }
 
-            if final_status2 == 200 {
-                self.call_id = Some(call_id.clone());
-                self.invite_cseq = Some(auth_cseq);
-                self.remote_tag = final_tag2;
-                self.remote_rtp_addr = crate::service::watcher::parse_sdp_connection(&final_resp2);
-                self.rtp_receiver = Some(receiver);
-                self.rtp_port = Some(bound_rtp_port);
-                self.in_call = true;
-                sdp::warn_codec_mismatch(configured_codec, &final_resp2);
-                self.call_start_time = Some(std::time::Instant::now());
-                self.send_ack(target_uri, &local, &call_id, auth_cseq)
-                    .await?;
-                log::info!(
-                    "Call established (with INVITE auth)! Remote RTP: {:?}",
-                    self.remote_rtp_addr
-                );
-                crate::service::logger::record_call_connect(&call_id);
-                return Ok(true);
-            }
-
-            log::error!("Auth INVITE failed (status={})", final_status2);
+            log::error!("All auth INVITE attempts failed");
             crate::service::logger::record_call_end(&call_id, "Failed", 0);
             self.remote_uri = None;
             return Ok(false);
@@ -380,10 +392,8 @@ impl SipClient {
                 }
             }
             "inband" => {
-                log::warn!(
-                    "dtmf_mode=inband sending is not yet supported; falling back to RFC 2833"
-                );
-                self.send_dtmf_rfc2833(digits).await?;
+                log::info!("Sending in-band audio DTMF tone(s) via RTP media stream");
+                self.send_dtmf_inband(digits).await?;
             }
             _ => {
                 self.send_dtmf_rfc2833(digits).await?;
@@ -411,6 +421,27 @@ impl SipClient {
         for c in digits.chars() {
             rtp_receiver
                 .send_dtmf_digit(c, target, &mut seq, &mut timestamp)
+                .await?;
+        }
+        Ok(())
+    }
+
+    /// Send DTMF digits as synthesized in-band audio PCM tones over RTP.
+    async fn send_dtmf_inband(&self, digits: &str) -> Result<()> {
+        let target = self.remote_rtp_addr.context("No remote RTP address")?;
+        let rtp_receiver = self
+            .rtp_receiver
+            .as_ref()
+            .context("RTP receiver not started")?;
+
+        let mut seq = 0u16;
+        let mut timestamp = 0u32;
+        let codec = crate::rtp::codec::Codec::from_str(&self.codec)
+            .unwrap_or(crate::rtp::codec::Codec::Pcmu);
+
+        for c in digits.chars() {
+            rtp_receiver
+                .send_dtmf_inband(c, target, codec, &mut seq, &mut timestamp)
                 .await?;
         }
         Ok(())

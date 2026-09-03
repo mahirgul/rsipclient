@@ -30,7 +30,7 @@ pub fn build_invite(
 
     format!(
         "INVITE {} SIP/2.0\r\n\
-         Via: SIP/2.0/{} {};branch={}\r\n\
+         Via: SIP/2.0/{} {};branch={};rport\r\n\
          Max-Forwards: 70\r\n\
          From: {};tag={}\r\n\
          To: <{}>\r\n\
@@ -89,7 +89,7 @@ pub fn build_invite_with_auth(
 
     format!(
         "INVITE {} SIP/2.0\r\n\
-         Via: SIP/2.0/{} {};branch={}\r\n\
+         Via: SIP/2.0/{} {};branch={};rport\r\n\
          Max-Forwards: 70\r\n\
          From: {};tag={}\r\n\
          To: <{}>\r\n\
@@ -138,7 +138,7 @@ pub fn build_ack(
 
     format!(
         "ACK {} SIP/2.0\r\n\
-         Via: SIP/2.0/{} {};branch={}\r\n\
+         Via: SIP/2.0/{} {};branch={};rport\r\n\
          Max-Forwards: 70\r\n\
          From: {};tag={}\r\n\
          To: <{}>;tag={}\r\n\
@@ -177,7 +177,7 @@ pub fn build_bye(
 
     format!(
         "BYE {} SIP/2.0\r\n\
-         Via: SIP/2.0/{} {};branch={}\r\n\
+         Via: SIP/2.0/{} {};branch={};rport\r\n\
          Max-Forwards: 70\r\n\
          From: {};tag={}\r\n\
          To: <{}>;tag={}\r\n\
@@ -215,7 +215,7 @@ pub fn build_cancel(
 
     format!(
         "CANCEL {} SIP/2.0\r\n\
-         Via: SIP/2.0/{} {};branch={}\r\n\
+         Via: SIP/2.0/{} {};branch={};rport\r\n\
          Max-Forwards: 70\r\n\
          From: {};tag={}\r\n\
          To: <{}>\r\n\

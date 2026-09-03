@@ -3,7 +3,7 @@
 use anyhow::Result;
 
 /// Audio codecs supported for RTP streaming
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Codec {
     /// G.711 μ-law, 8kHz, RTP payload type 0
     Pcmu,

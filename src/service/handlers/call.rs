@@ -20,6 +20,9 @@ pub async fn handle_call(req: &Request, clients: &HashMap<String, ManagedClient>
             if let Some(ref rx) = client.rtp_receiver {
                 rx.start(codec, Some(audio_tx));
             }
+            if client.settings.session_timers {
+                crate::service::managed_client::spawn_session_refresher(mc.client.clone(), 1800);
+            }
             Response::ok(&format!(
                 "'{}' calling {} - established",
                 req.account.as_deref().unwrap(),

@@ -41,6 +41,9 @@ pub async fn call_account(
             if let Some(ref rx) = client.rtp_receiver {
                 rx.start(codec, Some(audio_tx));
             }
+            if client.settings.session_timers {
+                crate::service::managed_client::spawn_session_refresher(client_arc.clone(), 1800);
+            }
             Ok(Json(
                 serde_json::json!({ "success": true, "msg": "Call established" }),
             ))

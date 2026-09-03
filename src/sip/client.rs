@@ -45,6 +45,8 @@ pub struct SipClient {
     pub rtp_receiver: Option<crate::rtp::receiver::RtpReceiver>,
     /// Actual local RTP port bound by the receiver (not the range start).
     pub rtp_port: Option<u16>,
+    /// Transaction layer manager for RFC 3261 §17 transaction FSM and message demux
+    pub transaction_mgr: Arc<crate::sip::transaction::TransactionManager>,
 }
 
 impl SipClient {
@@ -61,7 +63,7 @@ impl SipClient {
         settings: SipSettings,
         codec: String,
     ) -> Result<Self> {
-        Ok(Self {
+        let client = Self {
             server_addr,
             local_addr,
             username,
@@ -86,7 +88,10 @@ impl SipClient {
             remote_uri: None,
             rtp_receiver: None,
             rtp_port: None,
-        })
+            transaction_mgr: Arc::new(crate::sip::transaction::TransactionManager::new()),
+        };
+        client.transport.set_peer_filter(server_addr);
+        Ok(client)
     }
 
     pub(crate) async fn next_cseq(&self) -> u32 {
@@ -119,31 +124,31 @@ impl SipClient {
 
     pub(crate) async fn send(&self, msg: &str) -> Result<String> {
         log::debug!("--- SEND ---\n{}", msg);
-        crate::service::logger::record_sip_trace(
-            "OUT",
-            &self.username,
-            msg,
-            self.transport.via_str(),
-        );
-        self.transport
-            .send_to(msg.as_bytes(), self.server_addr)
-            .await?;
+        let first_line = msg.lines().next().unwrap_or("");
+        let method = first_line
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .to_ascii_uppercase();
 
-        let buf = self
-            .transport
-            .recv_timeout(5000)
-            .await
-            .context("Timeout waiting for response")?;
-
-        let resp = String::from_utf8_lossy(&buf).to_string();
-        log::debug!("--- RECV ---\n{}", resp);
-        crate::service::logger::record_sip_trace(
-            "IN",
-            &self.username,
-            &resp,
-            self.transport.via_str(),
-        );
-        Ok(resp)
+        if method == "INVITE" {
+            let resp = self
+                .transaction_mgr
+                .execute_invite(&self.transport, self.server_addr, msg, |status, r| {
+                    log::info!("Provisional response {} received for INVITE", status);
+                    log::debug!("--- RECV PROVISIONAL ---\n{}", r);
+                })
+                .await?;
+            log::debug!("--- RECV ---\n{}", resp);
+            Ok(resp)
+        } else {
+            let resp = self
+                .transaction_mgr
+                .execute_non_invite(&self.transport, self.server_addr, msg)
+                .await?;
+            log::debug!("--- RECV ---\n{}", resp);
+            Ok(resp)
+        }
     }
 
     pub(crate) async fn recv_extra(&self, timeout_ms: u64) -> Result<String> {
@@ -166,15 +171,47 @@ impl SipClient {
     /// Try to receive an unsolicited message (for incoming call detection).
     /// Returns None if nothing received within `timeout_ms`.
     pub async fn try_recv(&self, timeout_ms: u64) -> Option<String> {
+        // 1. Check if an incoming request was already queued
+        if let Some(req) = self.transaction_mgr.try_pop_incoming_request() {
+            crate::service::logger::record_sip_trace(
+                "IN",
+                &self.username,
+                &req.raw,
+                self.transport.via_str(),
+            );
+            return Some(req.raw);
+        }
+
+        // 2. Poll transport for incoming packet
         let buf = self.transport.try_recv(timeout_ms).await?;
+        self.transaction_mgr
+            .process_incoming(&self.transport, &buf, self.server_addr)
+            .await;
+
+        // 3. Return incoming request if one was queued
+        if let Some(req) = self.transaction_mgr.try_pop_incoming_request() {
+            crate::service::logger::record_sip_trace(
+                "IN",
+                &self.username,
+                &req.raw,
+                self.transport.via_str(),
+            );
+            return Some(req.raw);
+        }
+
+        // 4. Fallback for raw unsolicited request
         let resp = String::from_utf8_lossy(&buf).to_string();
-        crate::service::logger::record_sip_trace(
-            "IN",
-            &self.username,
-            &resp,
-            self.transport.via_str(),
-        );
-        Some(resp)
+        if !resp.starts_with("SIP/2.0 ") {
+            crate::service::logger::record_sip_trace(
+                "IN",
+                &self.username,
+                &resp,
+                self.transport.via_str(),
+            );
+            Some(resp)
+        } else {
+            None
+        }
     }
 
     /// Send a SIP MESSAGE text chat request (RFC 3428)

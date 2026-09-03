@@ -129,6 +129,42 @@ pub fn extract_auth_challenge(response: &str) -> Option<AuthChallenge> {
     fallback
 }
 
+/// Extract all Digest authentication challenges from WWW-Authenticate and Proxy-Authenticate headers.
+/// Sorted so that the preferred challenge (Proxy for 407, WWW for 401) appears first.
+pub fn extract_all_auth_challenges(response: &str) -> Vec<AuthChallenge> {
+    let prefer_proxy = parse_status_code(response)
+        .map(|s| s == 407)
+        .unwrap_or(false);
+    let mut list = Vec::new();
+
+    for line in response.lines() {
+        let proxy = if starts_with_ascii_ci(line, "proxy-authenticate:") {
+            true
+        } else if starts_with_ascii_ci(line, "www-authenticate:") {
+            false
+        } else {
+            continue;
+        };
+
+        let Some(challenge) = parse_challenge_line(line, proxy) else {
+            continue;
+        };
+
+        let is_supported_algo = challenge
+            .algorithm
+            .as_deref()
+            .map(|a| a.eq_ignore_ascii_case("md5"))
+            .unwrap_or(true);
+
+        if is_supported_algo {
+            list.push(challenge);
+        }
+    }
+
+    list.sort_by_key(|c| c.proxy != prefer_proxy);
+    list
+}
+
 /// Match a SIP header line against a full header name or its compact alias.
 /// Returns the length of the matching prefix **in `line`**, else None.
 fn match_header_prefix(line: &str, name: &str) -> Option<usize> {
@@ -298,6 +334,77 @@ pub fn validate_header_value(value: &str, what: &str) -> Result<()> {
     Ok(())
 }
 
+/// Parsed Session-Expires info (RFC 4028).
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionExpires {
+    pub delta_seconds: u32,
+    pub refresher: Option<String>,
+}
+
+/// Parse Session-Expires header (RFC 4028), e.g. "Session-Expires: 1800;refresher=uac"
+#[allow(dead_code)]
+pub fn parse_session_expires(msg: &str) -> Option<SessionExpires> {
+    let hdr = extract_header(msg, "Session-Expires");
+    if hdr.is_empty() {
+        return None;
+    }
+    let mut parts = hdr.split(';');
+    let delta_str = parts.next()?.trim();
+    let delta_seconds = delta_str.parse::<u32>().ok()?;
+
+    let mut refresher = None;
+    for param in parts {
+        let p = param.trim();
+        if starts_with_ascii_ci(p, "refresher=") {
+            refresher = Some(p["refresher=".len()..].trim().to_ascii_lowercase());
+        }
+    }
+
+    Some(SessionExpires {
+        delta_seconds,
+        refresher,
+    })
+}
+
+/// Parse Min-SE header (RFC 4028), e.g. "Min-SE: 90"
+#[allow(dead_code)]
+pub fn parse_min_se(msg: &str) -> Option<u32> {
+    let hdr = extract_header(msg, "Min-SE");
+    if hdr.is_empty() {
+        return None;
+    }
+    hdr.split(';').next()?.trim().parse::<u32>().ok()
+}
+
+/// Parse RSeq header for PRACK (RFC 3262), e.g. "RSeq: 1001"
+#[allow(dead_code)]
+pub fn parse_rseq(msg: &str) -> Option<u32> {
+    let hdr = extract_header(msg, "RSeq");
+    if hdr.is_empty() {
+        return None;
+    }
+    hdr.trim().parse::<u32>().ok()
+}
+
+/// Parse RAck header (RFC 3262), e.g. "RAck: 1001 1 INVITE" -> (rseq, cseq, method)
+#[allow(dead_code)]
+pub fn parse_rack(msg: &str) -> Option<(u32, u32, String)> {
+    let hdr = extract_header(msg, "RAck");
+    if hdr.is_empty() {
+        return None;
+    }
+    let parts: Vec<&str> = hdr.split_whitespace().collect();
+    if parts.len() >= 3 {
+        let rseq = parts[0].parse::<u32>().ok()?;
+        let cseq = parts[1].parse::<u32>().ok()?;
+        let method = parts[2].to_ascii_uppercase();
+        Some((rseq, cseq, method))
+    } else {
+        None
+    }
+}
+
 /// Valid DTMF digits for out-of-band signalling (RFC 2833 / RFC 6086).
 pub fn validate_dtmf_digit(digit: char) -> Result<()> {
     if digit.is_ascii_digit() || matches!(digit, '*' | '#' | 'A'..='D' | 'a'..='d') {
@@ -419,6 +526,17 @@ mod tests {
         assert!(!challenge.proxy);
     }
 
+    #[test]
+    fn test_extract_all_auth_challenges() {
+        let both = "SIP/2.0 401 Unauthorized\r\n\
+                    WWW-Authenticate: Digest realm=\"realm-a\", nonce=\"aaa\"\r\n\
+                    WWW-Authenticate: Digest realm=\"realm-b\", nonce=\"bbb\"\r\n\r\n";
+        let challenges = extract_all_auth_challenges(both);
+        assert_eq!(challenges.len(), 2);
+        assert_eq!(challenges[0].realm, "realm-a");
+        assert_eq!(challenges[1].realm, "realm-b");
+    }
+
     /// Falls back to the other kind when the matching one is absent.
     #[test]
     fn extract_auth_challenge_falls_back_to_the_other_header() {
@@ -527,5 +645,31 @@ mod tests {
         assert!(validate_header_value("<sip:b@e.com>", "target").is_err());
         assert!(validate_header_value("sip:b@e.com>", "target").is_err());
         assert!(validate_header_value("sip:\"b\"@e.com", "target").is_err());
+    }
+
+    #[test]
+    fn test_parse_session_expires() {
+        let msg = "SIP/2.0 200 OK\r\nSession-Expires: 1800;refresher=uac\r\nMin-SE: 90\r\n\r\n";
+        let se = parse_session_expires(msg).expect("valid session-expires");
+        assert_eq!(se.delta_seconds, 1800);
+        assert_eq!(se.refresher.as_deref(), Some("uac"));
+
+        let min_se = parse_min_se(msg).expect("valid min-se");
+        assert_eq!(min_se, 90);
+
+        let msg_plain = "SIP/2.0 200 OK\r\nSession-Expires: 3600\r\n\r\n";
+        let se2 = parse_session_expires(msg_plain).expect("plain se");
+        assert_eq!(se2.delta_seconds, 3600);
+        assert_eq!(se2.refresher, None);
+    }
+
+    #[test]
+    fn test_parse_rseq_and_rack() {
+        let msg_183 = "SIP/2.0 183 Session Progress\r\nRSeq: 1001\r\nRequire: 100rel\r\n\r\n";
+        assert_eq!(parse_rseq(msg_183), Some(1001));
+
+        let msg_prack = "PRACK sip:bob@example.com SIP/2.0\r\nRAck: 1001 1 INVITE\r\n\r\n";
+        let rack = parse_rack(msg_prack).expect("valid rack");
+        assert_eq!(rack, (1001, 1, "INVITE".to_string()));
     }
 }

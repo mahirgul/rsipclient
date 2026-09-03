@@ -6,7 +6,7 @@
 use crate::sip::client::SipClient;
 use crate::sip::messages::{build_register, build_register_with_auth};
 use crate::sip::utils;
-use anyhow::{Context, Result};
+use anyhow::Result;
 
 impl SipClient {
     /// REGISTER with the server. Returns true on success.
@@ -35,54 +35,67 @@ impl SipClient {
 
         // Handle MD5 Auth challenge (401 Unauthorized or 407 Proxy Authentication Required)
         if (status == 401 || status == 407) && self.auth_method == crate::sip::AuthMethod::Md5 {
-            let challenge = utils::extract_auth_challenge(&resp)
-                .context("Cannot extract WWW-Authenticate params")?;
+            let challenges = utils::extract_all_auth_challenges(&resp);
+            if challenges.is_empty() {
+                anyhow::bail!("Cannot extract WWW-Authenticate params");
+            }
 
-            let auth_msg = build_register_with_auth(
-                &self.username,
-                &self.password,
-                &self.domain,
-                &local,
-                &self.local_tag,
-                &self.new_branch(),
-                // Reuse original Call-ID for auth retry (RFC 3261 §22.4)
-                &call_id,
-                self.next_cseq().await,
-                &challenge,
-                &self.settings,
-                self.transport.via_str(),
-            );
-
-            let mut resp2 = self.send(&auth_msg).await?;
-            let mut status2 = utils::parse_status_code(&resp2)?;
-
-            // A server whose nonce expired answers stale=true with a fresh one;
-            // the same credentials succeed when retried against it.
-            if let Some(fresh) = stale_retry_challenge(status2, &resp2) {
-                log::info!("Registration nonce was stale, retrying with the fresh one");
-                let retry_msg = build_register_with_auth(
+            for challenge in challenges {
+                let auth_msg = build_register_with_auth(
                     &self.username,
                     &self.password,
                     &self.domain,
                     &local,
                     &self.local_tag,
                     &self.new_branch(),
+                    // Reuse original Call-ID for auth retry (RFC 3261 §22.4)
                     &call_id,
                     self.next_cseq().await,
-                    &fresh,
+                    &challenge,
                     &self.settings,
                     self.transport.via_str(),
                 );
-                resp2 = self.send(&retry_msg).await?;
-                status2 = utils::parse_status_code(&resp2)?;
+
+                let mut resp2 = self.send(&auth_msg).await?;
+                let mut status2 = utils::parse_status_code(&resp2)?;
+
+                // A server whose nonce expired answers stale=true with a fresh one;
+                // the same credentials succeed when retried against it.
+                if let Some(fresh) = stale_retry_challenge(status2, &resp2) {
+                    log::info!("Registration nonce was stale, retrying with the fresh one");
+                    let retry_msg = build_register_with_auth(
+                        &self.username,
+                        &self.password,
+                        &self.domain,
+                        &local,
+                        &self.local_tag,
+                        &self.new_branch(),
+                        &call_id,
+                        self.next_cseq().await,
+                        &fresh,
+                        &self.settings,
+                        self.transport.via_str(),
+                    );
+                    resp2 = self.send(&retry_msg).await?;
+                    status2 = utils::parse_status_code(&resp2)?;
+                }
+
+                if status2 == 200 {
+                    log::info!(
+                        "Registration successful (MD5 auth realm={})",
+                        challenge.realm
+                    );
+                    *self.registered.lock().await = true;
+                    return Ok(true);
+                }
+                log::warn!(
+                    "Auth registration failed for realm={} (status={}), trying next challenge if available",
+                    challenge.realm,
+                    status2
+                );
             }
 
-            if status2 == 200 {
-                log::info!("Registration successful (MD5 auth)");
-                *self.registered.lock().await = true;
-                return Ok(true);
-            }
-            log::error!("Auth registration failed (status={})", status2);
+            log::error!("All auth registration attempts failed");
             *self.registered.lock().await = false;
             return Ok(false);
         }
@@ -126,52 +139,65 @@ impl SipClient {
 
         // Handle MD5 Auth challenge on unregistration
         if (status == 401 || status == 407) && self.auth_method == crate::sip::AuthMethod::Md5 {
-            let challenge = utils::extract_auth_challenge(&resp)
-                .context("Cannot extract WWW-Authenticate params")?;
+            let challenges = utils::extract_all_auth_challenges(&resp);
+            if challenges.is_empty() {
+                anyhow::bail!("Cannot extract WWW-Authenticate params");
+            }
 
-            let auth_msg = build_register_with_auth(
-                &self.username,
-                &self.password,
-                &self.domain,
-                &local,
-                &self.local_tag,
-                &self.new_branch(),
-                // Reuse original Call-ID for auth retry (RFC 3261 §22.4)
-                &call_id,
-                self.next_cseq().await,
-                &challenge,
-                &settings,
-                self.transport.via_str(),
-            );
-
-            let mut resp2 = self.send(&auth_msg).await?;
-            let mut status2 = utils::parse_status_code(&resp2)?;
-
-            if let Some(fresh) = stale_retry_challenge(status2, &resp2) {
-                log::info!("Unregistration nonce was stale, retrying with the fresh one");
-                let retry_msg = build_register_with_auth(
+            for challenge in challenges {
+                let auth_msg = build_register_with_auth(
                     &self.username,
                     &self.password,
                     &self.domain,
                     &local,
                     &self.local_tag,
                     &self.new_branch(),
+                    // Reuse original Call-ID for auth retry (RFC 3261 §22.4)
                     &call_id,
                     self.next_cseq().await,
-                    &fresh,
+                    &challenge,
                     &settings,
                     self.transport.via_str(),
                 );
-                resp2 = self.send(&retry_msg).await?;
-                status2 = utils::parse_status_code(&resp2)?;
+
+                let mut resp2 = self.send(&auth_msg).await?;
+                let mut status2 = utils::parse_status_code(&resp2)?;
+
+                if let Some(fresh) = stale_retry_challenge(status2, &resp2) {
+                    log::info!("Unregistration nonce was stale, retrying with the fresh one");
+                    let retry_msg = build_register_with_auth(
+                        &self.username,
+                        &self.password,
+                        &self.domain,
+                        &local,
+                        &self.local_tag,
+                        &self.new_branch(),
+                        &call_id,
+                        self.next_cseq().await,
+                        &fresh,
+                        &settings,
+                        self.transport.via_str(),
+                    );
+                    resp2 = self.send(&retry_msg).await?;
+                    status2 = utils::parse_status_code(&resp2)?;
+                }
+
+                if status2 == 200 {
+                    log::info!(
+                        "Unregistration successful (MD5 auth realm={})",
+                        challenge.realm
+                    );
+                    *self.registered.lock().await = false;
+                    return Ok(true);
+                }
+                log::warn!(
+                    "Auth unregistration failed for realm={} (status={}), trying next challenge if available",
+                    challenge.realm,
+                    status2
+                );
             }
 
-            if status2 == 200 {
-                log::info!("Unregistration successful (MD5 auth)");
-                *self.registered.lock().await = false;
-                return Ok(true);
-            }
-            log::error!("Auth unregistration failed (status={})", status2);
+            log::error!("All auth unregistration attempts failed");
             return Ok(false);
         }
 

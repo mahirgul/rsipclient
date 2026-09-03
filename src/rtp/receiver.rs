@@ -391,6 +391,110 @@ impl RtpReceiver {
 
         Ok(())
     }
+
+    /// Send in-band DTMF audio tones synthesized into RTP media packets (ITU-T Q.23 / RFC 4733).
+    pub async fn send_dtmf_inband(
+        &self,
+        digit: char,
+        target: SocketAddr,
+        codec: crate::rtp::codec::Codec,
+        seq: &mut u16,
+        timestamp: &mut u32,
+    ) -> Result<()> {
+        let duration_ms = 160;
+        let sample_rate = 8000;
+        let samples = match synthesize_dtmf_pcm(digit, duration_ms, sample_rate) {
+            Some(s) => s,
+            None => {
+                log::warn!("Invalid DTMF digit for in-band synthesis: '{}'", digit);
+                return Ok(());
+            }
+        };
+
+        let ssrc: u32 = rand::random();
+        let chunk_size = 160;
+
+        for chunk in samples.chunks(chunk_size) {
+            let encoded = codec.encode(chunk)?;
+            let mut packet = Vec::with_capacity(12 + encoded.len());
+            packet.push(0x80);
+            packet.push(codec.payload_type());
+            packet.extend_from_slice(&seq.to_be_bytes());
+            packet.extend_from_slice(&timestamp.to_be_bytes());
+            packet.extend_from_slice(&ssrc.to_be_bytes());
+            packet.extend_from_slice(&encoded);
+
+            let _ = self.socket.send_to(&packet, target).await;
+            *seq = seq.wrapping_add(1);
+            *timestamp = timestamp.wrapping_add(chunk.len() as u32);
+
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+
+        // Send 40ms of silence gap (2 packets) after digit
+        let silence = vec![0i16; 160];
+        for _ in 0..2 {
+            let encoded = codec.encode(&silence)?;
+            let mut packet = Vec::with_capacity(12 + encoded.len());
+            packet.push(0x80);
+            packet.push(codec.payload_type());
+            packet.extend_from_slice(&seq.to_be_bytes());
+            packet.extend_from_slice(&timestamp.to_be_bytes());
+            packet.extend_from_slice(&ssrc.to_be_bytes());
+            packet.extend_from_slice(&encoded);
+
+            let _ = self.socket.send_to(&packet, target).await;
+            *seq = seq.wrapping_add(1);
+            *timestamp = timestamp.wrapping_add(160);
+
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+
+        Ok(())
+    }
+}
+
+/// Synthesize 16-bit linear PCM samples for a DTMF digit (ITU-T Q.23 / RFC 4733).
+pub fn synthesize_dtmf_pcm(
+    digit: char,
+    duration_ms: usize,
+    sample_rate: usize,
+) -> Option<Vec<i16>> {
+    let (f_low, f_high): (f32, f32) = match digit.to_ascii_uppercase() {
+        '1' => (697.0, 1209.0),
+        '2' => (697.0, 1336.0),
+        '3' => (697.0, 1477.0),
+        'A' => (697.0, 1633.0),
+        '4' => (770.0, 1209.0),
+        '5' => (770.0, 1336.0),
+        '6' => (770.0, 1477.0),
+        'B' => (770.0, 1633.0),
+        '7' => (852.0, 1209.0),
+        '8' => (852.0, 1336.0),
+        '9' => (852.0, 1477.0),
+        'C' => (852.0, 1633.0),
+        '*' => (941.0, 1209.0),
+        '0' => (941.0, 1336.0),
+        '#' => (941.0, 1477.0),
+        'D' => (941.0, 1633.0),
+        _ => return None,
+    };
+
+    let total_samples = (sample_rate * duration_ms) / 1000;
+    let mut samples = Vec::with_capacity(total_samples);
+    let amp = 8000.0f32; // Headroom to prevent clipping when summing both sines
+    let pi2 = std::f32::consts::PI * 2.0;
+    let rate_f = sample_rate as f32;
+
+    for t in 0..total_samples {
+        let time_sec = (t as f32) / rate_f;
+        let s_low = (pi2 * f_low * time_sec).sin();
+        let s_high = (pi2 * f_high * time_sec).sin();
+        let val = (amp * (s_low + s_high)).clamp(-32767.0, 32767.0) as i16;
+        samples.push(val);
+    }
+
+    Some(samples)
 }
 
 /// Parse an RFC 2833 telephone-event RTP payload
@@ -548,5 +652,17 @@ mod tests {
 
         assert!(parse_dtmf(&[1, 0, 0]).is_none(), "short payload");
         assert!(parse_dtmf(&[99, 0, 0, 0]).is_none(), "unknown event");
+    }
+
+    #[test]
+    fn test_synthesize_dtmf_pcm() {
+        let pcm = synthesize_dtmf_pcm('5', 160, 8000).expect("synthesizes valid tone");
+        // 160ms at 8000Hz = 1280 samples
+        assert_eq!(pcm.len(), 1280);
+        assert!(pcm.iter().any(|&s| s > 0));
+        assert!(pcm.iter().any(|&s| s < 0));
+
+        // Invalid digit returns None
+        assert!(synthesize_dtmf_pcm('Z', 160, 8000).is_none());
     }
 }

@@ -157,6 +157,12 @@ pub async fn incoming_call_watcher(
         {
             let c = client.lock().await;
             log::debug!("--- SEND 200 OK ---\n{}", response);
+            let branch = utils::extract_param(&msg, "Via", "branch");
+            let key = crate::sip::TransactionKey::new(branch, "INVITE");
+            let is_reliable = c.transport.via_str() != "UDP";
+            c.transaction_mgr
+                .record_server_response(key, response.clone(), is_reliable)
+                .await;
             let _ = c
                 .transport
                 .send_to(response.as_bytes(), c.server_addr)
@@ -255,6 +261,9 @@ pub async fn incoming_call_watcher(
             c.remote_uri = remote_uri;
             c.rtp_receiver = Some(receiver.clone());
             c.rtp_port = Some(bound_rtp_port);
+            if c.settings.session_timers {
+                crate::service::managed_client::spawn_session_refresher(client.clone(), 1800);
+            }
         }
         crate::service::logger::record_call_connect(&call_id);
 
@@ -387,18 +396,7 @@ pub async fn incoming_call_watcher(
     }
 }
 
-/// Parse the first `c=` line from SDP body, return SocketAddr
+/// Parse RTP connection address from SDP body, return SocketAddr (RFC 4566)
 pub fn parse_sdp_connection(msg: &str) -> Option<SocketAddr> {
-    // Find c= line
-    let c_line = msg.lines().find(|l| l.starts_with("c="))?;
-    // c=IN IP4 192.168.1.1
-    let parts: Vec<&str> = c_line.split_whitespace().collect();
-    let ip = parts.get(2)?;
-
-    // Find m= line for port
-    let m_line = msg.lines().find(|l| l.starts_with("m=audio"))?;
-    let m_parts: Vec<&str> = m_line.split_whitespace().collect();
-    let port: u16 = m_parts.get(1)?.parse().ok()?;
-
-    format!("{}:{}", ip, port).parse().ok()
+    crate::sip::sdp::parse_sdp_connection(msg)
 }

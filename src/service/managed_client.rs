@@ -191,3 +191,25 @@ pub fn spawn_watchers_for_client(name: String, mc: &ManagedClient, shutdown: Arc
         .await;
     });
 }
+
+/// Spawn a periodic RFC 4028 session timer refresher for an active dialog.
+pub fn spawn_session_refresher(client: Arc<Mutex<SipClient>>, interval_secs: u64) {
+    tokio::spawn(async move {
+        // Refresh at interval / 2 (or minimum 10 seconds)
+        let sleep_duration = std::time::Duration::from_secs((interval_secs / 2).max(10));
+        loop {
+            tokio::time::sleep(sleep_duration).await;
+            let mut c = client.lock().await;
+            if !c.in_call {
+                log::debug!("Session refresh loop exiting (call ended)");
+                break;
+            }
+            log::info!("RFC 4028 session timer expired, refreshing active dialog...");
+            if let Err(e) = c.refresh_session().await {
+                log::error!("RFC 4028 session refresh failed: {}, terminating call", e);
+                let _ = c.bye().await;
+                break;
+            }
+        }
+    });
+}

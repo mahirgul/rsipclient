@@ -4,7 +4,7 @@
   <a href="https://github.com/mahirgul/rsipclient/actions/workflows/ci.yml">
     <img src="https://img.shields.io/github/actions/workflow/status/mahirgul/rsipclient/ci.yml?branch=master&style=for-the-badge&logo=github-actions&logoColor=white&label=CI&color=2ea44f" alt="CI Status">
   </a>
-  <img src="https://img.shields.io/badge/Release-v2.5.2-blue?style=for-the-badge&logo=git&logoColor=white" alt="Release v2.5.2">
+  <img src="https://img.shields.io/badge/Release-v2.6.0-blue?style=for-the-badge&logo=git&logoColor=white" alt="Release v2.6.0">
   <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License">
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey?style=for-the-badge" alt="Windows, Linux & macOS">
   <a href="https://mahirgul.github.io/rsipclient/">

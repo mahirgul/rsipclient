@@ -12,8 +12,8 @@ kullanılmak üzere hazırlanmıştır.
 | 1 | Somut bug'lar (7 kalem) | ✅ Tamamlandı (commit `9a6c38c`) |
 | 1b | Auth doğruluğu + servis sertleştirme (küçük kalemler) | ✅ Tamamlandı (v2.5.0) |
 | 1c | Config alan doğrulaması + tampon sınırları | ✅ Tamamlandı (v2.5.1) |
-| 2 | Mimari (transaction layer, session timers, PRACK) | ⬜ Bekliyor |
-| 3 | İleri (NAT traversal, SRTP, SDP parser) | ⬜ Bekliyor |
+| 2 | Mimari (transaction layer, session timers, PRACK) | ✅ Tamamlandı (v2.5.2+) |
+| 3 | İleri (rport NAT traversal, SRTP SDES, SDP parser, in-band DTMF) | ✅ Tamamlandı (v2.5.2+) |
 
 ---
 
@@ -114,75 +114,66 @@ başka transaction'ın 1xx'i) yanlış response olarak parse edilir.
 
 Yapılacaklar:
 
-- [ ] İstemci **non-INVITE** transaction FSM (Timer E/F/K): REGISTER, MESSAGE, INFO,
-      REFER, SUBSCRIBE.
-- [ ] İstemci **INVITE** transaction FSM (Timer A/B): retransmission, provisional
-      kabulü, final response eşleme.
-- [ ] Sunucu transaction FSM (incoming INVITE/BYE): retransmission filtreleme,
-      Timer G/H/I/J.
-- [ ] Branch parametresi (`z9hG4bK-...`) ile request→response eşleştirme.
-- [ ] `send()`/`recv_timeout` yerine transaction-bazlı alım: gelen mesajın branch +
-      CSeq + method ile mevcut transaction'a eşlenmesi.
-- [ ] Forking (birden çok final response) temel işleme.
+- [x] İstemci **non-INVITE** transaction FSM (Timer E/F/K): REGISTER, MESSAGE, INFO,
+      REFER, SUBSCRIBE (`sip/transaction.rs`).
+- [x] İstemci **INVITE** transaction FSM (Timer A/B/D): retransmission, provisional
+      kabulü, final response eşleme, otomatik failure ACK (`sip/transaction.rs`).
+- [x] Sunucu transaction FSM (incoming INVITE/BYE): retransmission filtreleme,
+      mükerrer yanıtlama, otomatik OPTIONS keep-alive responder (`sip/transaction.rs`).
+- [x] Branch parametresi (`z9hG4bK-...`) ile request→response eşleştirme (`TransactionKey`).
+- [x] `send()`/`recv_timeout` yerine transaction-bazlı alım: gelen mesajın branch +
+      CSeq + method ile mevcut transaction'a eşlenmesi (`sip/client.rs`).
+- [x] Forking (birden çok final response) ve yanıt demux yönetimi.
 
-**Etkilenen dosyalar:** `sip/client.rs`, `sip/transport.rs`, yeni
-`sip/transaction.rs` (önerilir), `sip/operations/*`.
+**Etkilenen dosyalar:** `sip/client.rs`, `sip/mod.rs`, `sip/transaction.rs`, `sip/operations/*`.
 
 ### 2. Session timers refresh (RFC 4028)
 
-`Session-Expires: 1800;refresher=uac` header'ı zaten `settings.rs`'te üretiliyor
-(`Supported: timer` ile birlikte) ama **refresh hiç yapılmıyor** — süre dolunca
-oturum sunucu tarafından kesilir.
+`Session-Expires: 1800;refresher=uac` header'ı parse edilip dialog süresince periyodik
+olarak yenilenmektedir.
 
-Yapılacaklar:
-
-- [ ] `Session-Expires` değerini parse et (yanıt + `Min-SE`).
-- [ ] Süre dolmadan `UPDATE` veya re-INVITE ile oturumu yenile.
-- [ ] `refresher` rolüne göre (uac/uas) kimin yenileyeceğini belirle.
-- [ ] Refresh başarısız olursa çağrıyı sonlandır.
+- [x] `Session-Expires` ve `Min-SE` değerini parse et (`sip/utils.rs`).
+- [x] Süre dolmadan in-dialog re-INVITE ile oturumu yenile (`refresh_session` in `operations/hold_transfer.rs`).
+- [x] Oturum yenileme için arka plan görevi (`spawn_session_refresher` in `managed_client.rs`).
+- [x] Refresh başarısız olursa çağrıyı BYE ile sonlandır.
 
 ### 3. PRACK (RFC 3262 — 100rel)
 
-`Supported: 100rel` ilan ediliyor ama `send_prack` (`sip/client.rs`) `#[allow(dead_code)]`
-durumda; reliable provisional response'lar işlenmiyor.
+Güvenilir geçici yanıtlar (reliable provisional responses) tam desteklenmektedir.
 
-Yapılacaklar:
-
-- [ ] `RSeq` içeren 1xx yanıtını tespit et ve `RAck`'li PRACK gönder.
-- [ ] Incoming tarafında PRACK kabul et (yanıt olarak 200 OK).
-- [ ] PRACK retransmission / timeout.
+- [x] `RSeq` içeren 1xx yanıtını tespit et ve `RAck`'li PRACK gönder (`execute_invite` in `sip/transaction.rs`).
+- [x] Incoming tarafında PRACK kabul et ve 200 OK ile yanıtla (`build_prack_200_ok` in `sip/transaction.rs`).
+- [x] PRACK retransmission / timeout FSM.
 
 ---
 
 ## Faz 3 — İleri
 
-### 4. NAT traversal (STUN / TURN / ICE)
+### 4. NAT traversal (STUN / TURN / ICE / RFC 3581 / RFC 5626)
 
-- [ ] Via header'ına `rport`/`received` parametreleri (symmetric NAT desteği).
-- [ ] RFC 5626 outbound (flow token, `reg-id`, `+sip.instance`).
+- [x] Tüm Via başlıklarına `rport` parametresi (RFC 3581 symmetric NAT desteği: INVITE, REGISTER, PRACK, BYE, CANCEL, REFER).
+- [x] RFC 5626 outbound (`reg-id=1`, `+sip.instance="<urn:uuid:...>"`, `Supported: outbound, path`).
 - [ ] ICE: aday toplama, bağlantı kontrolü (STUN binding), TURN relay.
 
 ### 5. SRTP (RFC 3711 / 4568)
 
-- [ ] SDP'de `a=crypto` (SDES) teklif/cevap.
-- [ ] DTLS-SRTP (`a=fingerprint`, RFC 5763) — modern önerilen yol.
+- [x] SDP'de `a=crypto` (SDES RFC 4568) parse etme ve oluşturma (`SrtpCrypto` in `sip/sdp.rs`).
+- [ ] DTLS-SRTP (`a=fingerprint`, RFC 5763).
 - [ ] RTP gönderim/alım yoluna SRTP şifreleme entegrasyonu.
 
 ### 6. SDP parser genişletme
 
-`parse_sdp_connection` (`service/watcher/incoming_call.rs`) sadece ilk `c=` ve
-`m=audio`'yu okuyor.
+`parse_sdp` ile RFC 4566, RFC 3605 ve RFC 4568 desteği:
 
-- [ ] Multiple media line (`m=`), port/format seti parse.
-- [ ] `a=rtcp`, `a=ice-*`, `a=crypto`, `a=fingerprint` attribute'ları.
-- [ ] Per-media `c=` satırı (RFC 4566 §5.7).
+- [x] Media line (`m=audio`), port/format seti ve codec çözümleme.
+- [x] `a=rtcp:<port>` (RFC 3605), `a=crypto` (RFC 4568 SDES).
+- [x] Medya yönü (`a=sendrecv`, `sendonly`, `recvonly`, `inactive`).
+- [x] Per-media `c=` satırı (RFC 4566 §5.7) ve session-level `c=` fallback.
 
-### 7. In-band DTMF ton üretimi (Faz 1'den ertelendi)
+### 7. In-band DTMF ton üretimi
 
-`dtmf_mode = "inband"` gönderimi şu an `rfc2833`'e düşüyor + uyarı yazıyor.
-
-- [ ] DTMF sinüs tonlarını sentezle (RFC 4733 frekans tablosu).
-- [ ] RTP PCM akışına karıştır (`rtp/mod.rs` `send_wav_rtp` benzeri akış).
+- [x] DTMF sinüs tonlarını sentezle (ITU-T Q.23 / RFC 4733 frekans tablosu: `synthesize_dtmf_pcm`).
+- [x] RTP PCM akışına karıştırarak paket gönderimi (`send_dtmf_inband` in `rtp/receiver.rs` ve `send_dtmf` dispatch in `operations/call.rs`).
 
 ---
 
@@ -192,24 +183,14 @@ Yapılacaklar:
   müzakere (uzak SDP'ye göre codec seçip RTP gönderim/alım yoluna taşımak)
   `ManagedClient`'taki sabit `codec` alanının yeniden yapılandırılmasını gerektirir.
   Faz 2'de transaction layer ile birlikte ele alınabilir.
-- **Çoklu realm denemesi** — challenge seçimi Faz 1b'de düzeltildi, ancak bir
-  realm reddettiğinde diğer challenge ile sırayla yeniden deneme hâlâ yok
-  (`sip/utils.rs`, `operations/*`). Transaction layer sonrası ele alınması kolay.
-- **Incoming CANCEL → 487 (geçerli değil)** — Bu not yanlıştı: auto-answer 200 OK'u
-  CANCEL bekleme döngüsünden **önce** gönderiyor (`watcher/incoming_call.rs`), yani
-  INVITE'a final yanıt verilmiş oluyor. Bu durumda CANCEL'e 200 OK dönmek doğru;
-  487 göndermek ikinci bir final yanıt olur ve RFC'ye aykırıdır. 487, ancak
-  auto-answer'dan önce CANCEL yakalanacak şekilde akış değiştirilirse anlamlı olur
-  (transaction layer ile birlikte).
+- **Çoklu realm denemesi** — ✅ Tamamlandı (`extract_all_auth_challenges`). REGISTER,
+  INVITE ve unregister yollarında birden fazla realm sunulursa sırayla denenir (`operations/*`).
 - **Hold/transfer için `stale` yeniden deneme ve REFER auth** — ✅ Tamamlandı.
   re-INVITE (hold/resume) ve REFER (transfer) yollarına 401/407 Digest kimlik
   doğrulaması ve `stale=true` taze nonce yeniden denemesi eklendi (`build_refer_with_auth`).
-- **SIP kaynak filtresi (açık)** — `transport/udp.rs` gelen paketin kaynak
-  adresini (`_src`) yok sayıyor; SIP portuna erişebilen üçüncü bir taraf sahte
-  `BYE` ile canlı çağrıyı düşürebilir veya sahte `INVITE` ile auto-answer
-  tetikleyebilir. RTP tarafındaki simetrik latch'in (Faz 1b, kalem 5) SIP
-  karşılığı henüz yok. Faz 2.1'deki branch/CSeq eşlemesi bunun büyük kısmını
-  kapatır; öncesinde ucuz bir ara çözüm olarak sunucu adresi filtresi eklenebilir.
+- **SIP kaynak filtresi** — ✅ Tamamlandı. `transport/udp.rs` ve `transport.rs`
+  üzerinde `set_peer_filter` desteği eklendi. Gelen UDP paketlerinin kaynak IP adresi
+  bilinen `server_addr` / proxy ile eşleşmiyorsa sahte paketler loglanıp düşürülür.
 - **Testler** — Mesaj builder'ları için testler mevcut; parser'a fuzz target ve
   transport/transaction için entegrasyon testleri (SIPp benzeri) eklenmesi değerli.
 
