@@ -47,6 +47,10 @@ pub struct SipClient {
     pub rtp_port: Option<u16>,
     /// Transaction layer manager for RFC 3261 §17 transaction FSM and message demux
     pub transaction_mgr: Arc<crate::sip::transaction::TransactionManager>,
+    /// Negotiated RFC 4028 session-timer interval (seconds) for the active
+    /// dialog, taken from the peer's Session-Expires header. `None` when
+    /// session timers aren't in use or nothing was negotiated yet.
+    pub session_expires_secs: Option<u32>,
 }
 
 impl SipClient {
@@ -89,6 +93,7 @@ impl SipClient {
             rtp_receiver: None,
             rtp_port: None,
             transaction_mgr: Arc::new(crate::sip::transaction::TransactionManager::new()),
+            session_expires_secs: None,
         };
         client.transport.set_peer_filter(server_addr);
         Ok(client)
@@ -134,10 +139,16 @@ impl SipClient {
         if method == "INVITE" {
             let resp = self
                 .transaction_mgr
-                .execute_invite(&self.transport, self.server_addr, msg, |status, r| {
-                    log::info!("Provisional response {} received for INVITE", status);
-                    log::debug!("--- RECV PROVISIONAL ---\n{}", r);
-                })
+                .execute_invite(
+                    &self.transport,
+                    self.server_addr,
+                    msg,
+                    self.cseq.clone(),
+                    |status, r| {
+                        log::info!("Provisional response {} received for INVITE", status);
+                        log::debug!("--- RECV PROVISIONAL ---\n{}", r);
+                    },
+                )
                 .await?;
             log::debug!("--- RECV ---\n{}", resp);
             Ok(resp)
@@ -152,7 +163,7 @@ impl SipClient {
     }
 
     pub(crate) async fn recv_extra(&self, timeout_ms: u64) -> Result<String> {
-        let buf = self
+        let (buf, _src) = self
             .transport
             .recv_timeout(timeout_ms)
             .await
@@ -182,13 +193,22 @@ impl SipClient {
             return Some(req.raw);
         }
 
-        // 2. Poll transport for incoming packet
-        let buf = self.transport.try_recv(timeout_ms).await?;
+        // 2. Poll transport for incoming packet. `src` is the packet's real
+        // sender (not `self.server_addr`), so process_incoming can match/
+        // reply to peers other than the configured server (e.g. an SBC that
+        // answers from a different IP) and any auto-reply it sends goes back
+        // to whoever actually sent the request.
+        let (buf, src) = self.transport.try_recv(timeout_ms).await?;
         self.transaction_mgr
-            .process_incoming(&self.transport, &buf, self.server_addr)
+            .process_incoming(&self.transport, &buf, src)
             .await;
 
-        // 3. Return incoming request if one was queued
+        // 3. Return incoming request if one was queued. process_incoming
+        // fully disposes of every request it sees — either by auto-replying
+        // (retransmit cache, OPTIONS, PRACK) or by queuing it here — so
+        // there is nothing left to fall back to when this comes back empty;
+        // re-parsing the raw buffer would re-deliver a request that was
+        // already handled and replied to above.
         if let Some(req) = self.transaction_mgr.try_pop_incoming_request() {
             crate::service::logger::record_sip_trace(
                 "IN",
@@ -199,19 +219,7 @@ impl SipClient {
             return Some(req.raw);
         }
 
-        // 4. Fallback for raw unsolicited request
-        let resp = String::from_utf8_lossy(&buf).to_string();
-        if !resp.starts_with("SIP/2.0 ") {
-            crate::service::logger::record_sip_trace(
-                "IN",
-                &self.username,
-                &resp,
-                self.transport.via_str(),
-            );
-            Some(resp)
-        } else {
-            None
-        }
+        None
     }
 
     /// Send a SIP MESSAGE text chat request (RFC 3428)

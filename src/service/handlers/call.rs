@@ -21,7 +21,11 @@ pub async fn handle_call(req: &Request, clients: &HashMap<String, ManagedClient>
                 rx.start(codec, Some(audio_tx));
             }
             if client.settings.session_timers {
-                crate::service::managed_client::spawn_session_refresher(mc.client.clone(), 1800);
+                let interval: u64 = client.session_expires_secs.unwrap_or(1800).into();
+                crate::service::managed_client::spawn_session_refresher(
+                    mc.client.clone(),
+                    interval,
+                );
             }
             Response::ok(&format!(
                 "'{}' calling {} - established",

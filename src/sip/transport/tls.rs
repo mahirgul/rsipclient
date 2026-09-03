@@ -35,6 +35,9 @@ impl Default for TlsConfig {
 pub struct TlsTransport {
     stream: tokio::sync::Mutex<TlsStream<TcpStream>>,
     local_addr: SocketAddr,
+    /// Remote address this stream is connected to — see the identical field
+    /// on `TcpTransport` for why TLS/TCP can report a fixed "source".
+    peer_addr: SocketAddr,
     /// Buffer for partial reads
     read_buf: tokio::sync::Mutex<Vec<u8>>,
 }
@@ -83,6 +86,7 @@ impl TlsTransport {
         Ok(Self {
             stream: tokio::sync::Mutex::new(stream),
             local_addr,
+            peer_addr: server_addr,
             read_buf: tokio::sync::Mutex::new(Vec::new()),
         })
     }
@@ -103,24 +107,25 @@ impl TlsTransport {
     }
 
     /// Receive a single SIP message with timeout.
-    pub async fn recv_timeout(&self, timeout_ms: u64) -> Result<Vec<u8>> {
-        tokio::time::timeout(
+    pub async fn recv_timeout(&self, timeout_ms: u64) -> Result<(Vec<u8>, SocketAddr)> {
+        let msg = tokio::time::timeout(
             std::time::Duration::from_millis(timeout_ms),
             self.recv_sip_message(),
         )
         .await
-        .context("TLS receive timed out")?
+        .context("TLS receive timed out")??;
+        Ok((msg, self.peer_addr))
     }
 
     /// Try to receive with a short timeout. Returns None if nothing arrived.
-    pub async fn try_recv(&self, timeout_ms: u64) -> Option<Vec<u8>> {
+    pub async fn try_recv(&self, timeout_ms: u64) -> Option<(Vec<u8>, SocketAddr)> {
         match tokio::time::timeout(
             std::time::Duration::from_millis(timeout_ms),
             self.recv_sip_message(),
         )
         .await
         {
-            Ok(Ok(msg)) => Some(msg),
+            Ok(Ok(msg)) => Some((msg, self.peer_addr)),
             _ => None,
         }
     }

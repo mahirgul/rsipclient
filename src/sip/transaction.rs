@@ -16,6 +16,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, Mutex};
+use uuid::Uuid;
 
 // ── RFC 3261 §17 Timer Constants ─────────────────────────────────────────────
 
@@ -185,6 +186,12 @@ impl TransactionManager {
                 };
 
                 if let Some(tx) = sender {
+                    // This response matched a transaction we initiated, which
+                    // requires knowing our unguessable branch value — strong
+                    // proof `src` is a legitimate peer even if it differs
+                    // from the originally configured server address (e.g.
+                    // load-balanced SBC, anycast failover).
+                    transport.learn_peer(src);
                     if let Err(e) = tx.send(trimmed.to_string()) {
                         log::debug!("Client transaction {} channel closed: {}", key, e);
                     }
@@ -207,6 +214,19 @@ impl TransactionManager {
             }
         } else {
             // ── Request Handling ────────────────────────────────────────────
+            // Unlike responses (proven legitimate by matching a transaction
+            // we initiated, see above), a fresh inbound request carries no
+            // such proof, so it's the one place the source-IP allow-list
+            // still applies (SIP spoofing protection: stops an off-path
+            // third party from injecting a fake BYE/INVITE).
+            if !transport.is_peer_allowed(src) {
+                log::warn!(
+                    "Dropping inbound SIP request from untrusted peer {} (not in allow-list)",
+                    src
+                );
+                return;
+            }
+
             let first_line = trimmed.lines().next().unwrap_or("");
             let method = first_line
                 .split_whitespace()
@@ -341,7 +361,10 @@ impl TransactionManager {
 
         // Send initial request
         crate::service::logger::record_sip_trace("OUT", "client", request, transport.via_str());
-        transport.send_to(request.as_bytes(), target).await?;
+        if let Err(e) = transport.send_to(request.as_bytes(), target).await {
+            self.remove_client_transaction(&key).await;
+            return Err(e);
+        }
 
         let mut timer_e_ms = T1_MS;
         let timer_f = tokio::time::sleep(Duration::from_millis(TIMER_F_MS));
@@ -413,8 +436,8 @@ impl TransactionManager {
                 }
                 // Also poll transport cooperatively if no background receiver is running
                 packet = transport.try_recv(100) => {
-                    if let Some(data) = packet {
-                        self.process_incoming(transport, &data, target).await;
+                    if let Some((data, src)) = packet {
+                        self.process_incoming(transport, &data, src).await;
                     }
                 }
             }
@@ -434,6 +457,7 @@ impl TransactionManager {
         transport: &Transport,
         target: SocketAddr,
         request: &str,
+        cseq_counter: Arc<Mutex<u32>>,
         mut on_provisional: F,
     ) -> Result<String>
     where
@@ -452,7 +476,10 @@ impl TransactionManager {
         let mut state = TransactionState::Calling;
 
         crate::service::logger::record_sip_trace("OUT", "client", request, transport.via_str());
-        transport.send_to(request.as_bytes(), target).await?;
+        if let Err(e) = transport.send_to(request.as_bytes(), target).await {
+            self.remove_client_transaction(&key).await;
+            return Err(e);
+        }
 
         let mut timer_a_ms = T1_MS;
         let timer_b = tokio::time::sleep(Duration::from_millis(TIMER_B_MS));
@@ -505,14 +532,32 @@ impl TransactionManager {
 
                                 // RFC 3262: If provisional response is reliable (RSeq present), send PRACK
                                 if let Some(rseq) = utils::parse_rseq(&resp) {
-                                    let cseq_num = utils::extract_header(request, "CSeq")
+                                    let invite_cseq_num = utils::extract_header(request, "CSeq")
                                         .split_whitespace()
                                         .next()
                                         .and_then(|s| s.parse::<u32>().ok())
                                         .unwrap_or(1);
-                                    if let Some(prack) =
-                                        build_prack_ack(request, &resp, rseq, cseq_num)
-                                    {
+                                    // Each PRACK is its own request within the dialog and
+                                    // needs a fresh branch (RFC 3261 §8.1.1.7) and its own
+                                    // CSeq, drawn from the same dialog-wide counter as every
+                                    // other in-dialog request — reusing the INVITE's own
+                                    // branch/CSeq would make multiple reliable provisional
+                                    // responses produce indistinguishable PRACKs.
+                                    let prack_cseq = {
+                                        let mut c = cseq_counter.lock().await;
+                                        let val = *c;
+                                        *c += 1;
+                                        val
+                                    };
+                                    let prack_branch = format!("z9hG4bK-{}", Uuid::new_v4());
+                                    if let Some(prack) = build_prack_ack(
+                                        request,
+                                        &resp,
+                                        rseq,
+                                        prack_cseq,
+                                        invite_cseq_num,
+                                        &prack_branch,
+                                    ) {
                                         log::info!(
                                             "Sending PRACK for reliable provisional response (RSeq={})",
                                             rseq
@@ -549,8 +594,8 @@ impl TransactionManager {
                     }
                 }
                 packet = transport.try_recv(100) => {
-                    if let Some(data) = packet {
-                        self.process_incoming(transport, &data, target).await;
+                    if let Some((data, src)) = packet {
+                        self.process_incoming(transport, &data, src).await;
                     }
                 }
             }
@@ -609,12 +654,37 @@ fn build_options_200_ok(req: &str) -> Option<String> {
     ))
 }
 
+/// Replace the `branch=` parameter of a raw Via header value with `new_branch`,
+/// keeping the sent-by host:port and any other parameters intact.
+fn replace_via_branch(via: &str, new_branch: &str) -> String {
+    match via.find("branch=") {
+        Some(idx) => {
+            let value_start = idx + "branch=".len();
+            let value_end = via[value_start..]
+                .find(';')
+                .map(|i| value_start + i)
+                .unwrap_or(via.len());
+            format!("{}{}{}", &via[..value_start], new_branch, &via[value_end..])
+        }
+        None => format!("{};branch={}", via.trim_end(), new_branch),
+    }
+}
+
 /// Build an automatic PRACK request acknowledging a reliable 1xx provisional response (RFC 3262 §3).
+///
+/// `prack_cseq` is this PRACK's own CSeq number (must be unique per PRACK —
+/// draw it from the dialog's shared CSeq counter, never derive it from the
+/// INVITE's CSeq, or multiple reliable provisionals for the same INVITE
+/// produce indistinguishable PRACKs). `invite_cseq` is the original INVITE's
+/// CSeq number, used only in the RAck header. `branch` is a fresh branch
+/// value for this PRACK's Via header (RFC 3261 §8.1.1.7 branch uniqueness).
 pub fn build_prack_ack(
     invite_req: &str,
     prov_resp: &str,
     rseq: u32,
+    prack_cseq: u32,
     invite_cseq: u32,
+    branch: &str,
 ) -> Option<String> {
     let ruri = utils::extract_header(prov_resp, "Contact")
         .chars()
@@ -631,11 +701,10 @@ pub fn build_prack_ack(
             .to_string()
     };
 
-    let via = utils::extract_header(invite_req, "Via");
+    let via = replace_via_branch(&utils::extract_header(invite_req, "Via"), branch);
     let from = utils::extract_header(invite_req, "From");
     let to = utils::extract_header(prov_resp, "To");
     let call_id = utils::extract_header(invite_req, "Call-ID");
-    let prack_cseq = invite_cseq.wrapping_add(1);
 
     Some(format!(
         "PRACK {} SIP/2.0\r\n\
@@ -818,10 +887,41 @@ mod tests {
                          Contact: <sip:bob@192.168.1.60:5060>\r\n\
                          RSeq: 42\r\n\r\n";
 
-        let prack = build_prack_ack(req, prov_resp, 42, 1).expect("prack built");
+        let prack =
+            build_prack_ack(req, prov_resp, 42, 2, 1, "z9hG4bK-prack1").expect("prack built");
         assert!(prack.starts_with("PRACK sip:bob@192.168.1.60:5060 SIP/2.0\r\n"));
         assert!(prack.contains("RAck: 42 1 INVITE"));
         assert!(prack.contains("CSeq: 2 PRACK"));
+        assert!(prack.contains("branch=z9hG4bK-prack1"));
+        assert!(!prack.contains("branch=z9hG4bK-invite1"));
+    }
+
+    #[test]
+    fn test_multiple_pracks_get_distinct_branch_and_cseq() {
+        let req = "INVITE sip:bob@example.com SIP/2.0\r\n\
+                   Via: SIP/2.0/UDP 192.168.1.50:5060;branch=z9hG4bK-invite1;rport\r\n\
+                   From: <sip:alice@example.com>;tag=atag\r\n\
+                   To: <sip:bob@example.com>\r\n\
+                   Call-ID: callid1\r\n\
+                   CSeq: 1 INVITE\r\n\r\n";
+        let resp_180 = "SIP/2.0 180 Ringing\r\n\
+                        Via: SIP/2.0/UDP 192.168.1.50:5060;branch=z9hG4bK-invite1;rport\r\n\
+                        From: <sip:alice@example.com>;tag=atag\r\n\
+                        To: <sip:bob@example.com>;tag=btag\r\n\
+                        Call-ID: callid1\r\n\
+                        CSeq: 1 INVITE\r\n\
+                        Contact: <sip:bob@192.168.1.60:5060>\r\n\
+                        RSeq: 1\r\n\r\n";
+        let prack1 = build_prack_ack(req, resp_180, 1, 2, 1, "z9hG4bK-prackA").unwrap();
+        let prack2 = build_prack_ack(req, resp_180, 2, 3, 1, "z9hG4bK-prackB").unwrap();
+        assert_ne!(
+            utils::extract_header(&prack1, "Via"),
+            utils::extract_header(&prack2, "Via")
+        );
+        assert_ne!(
+            utils::extract_header(&prack1, "CSeq"),
+            utils::extract_header(&prack2, "CSeq")
+        );
     }
 
     #[test]

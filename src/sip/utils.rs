@@ -335,7 +335,6 @@ pub fn validate_header_value(value: &str, what: &str) -> Result<()> {
 }
 
 /// Parsed Session-Expires info (RFC 4028).
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionExpires {
     pub delta_seconds: u32,
@@ -343,7 +342,6 @@ pub struct SessionExpires {
 }
 
 /// Parse Session-Expires header (RFC 4028), e.g. "Session-Expires: 1800;refresher=uac"
-#[allow(dead_code)]
 pub fn parse_session_expires(msg: &str) -> Option<SessionExpires> {
     let hdr = extract_header(msg, "Session-Expires");
     if hdr.is_empty() {

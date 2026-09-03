@@ -23,14 +23,17 @@ impl SipClient {
     /// Refresh the session timer for the active dialog (RFC 4028).
     ///
     /// Sends an in-dialog re-INVITE with the active SDP and Session-Expires header,
-    /// retrying with Digest authentication if challenged.
+    /// retrying with Digest authentication if challenged. Preserves the current
+    /// hold state instead of forcing a resume — a refresh must not un-hold a
+    /// call the user deliberately put on hold.
     pub async fn refresh_session(&mut self) -> Result<bool> {
         if !self.in_call {
             log::warn!("No active call to refresh");
             return Ok(false);
         }
         log::info!("Refreshing active SIP session (RFC 4028)...");
-        self.hold_resume(true).await
+        let currently_resumed = !self.held;
+        self.hold_resume(currently_resumed).await
     }
 
     /// Shared hold/resume implementation.

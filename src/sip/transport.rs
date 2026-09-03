@@ -105,7 +105,10 @@ impl Transport {
         }
     }
 
-    pub async fn recv_timeout(&self, timeout_ms: u64) -> Result<Vec<u8>> {
+    /// Receive one message with its source address. For UDP the source is
+    /// whatever address the packet actually arrived from; for TCP/TLS it is
+    /// always the connected peer (those transports are connection-oriented).
+    pub async fn recv_timeout(&self, timeout_ms: u64) -> Result<(Vec<u8>, SocketAddr)> {
         match self {
             Transport::Udp(udp) => udp.recv_timeout(timeout_ms).await,
             Transport::Tcp(tcp) => tcp.recv_timeout(timeout_ms).await,
@@ -113,7 +116,8 @@ impl Transport {
         }
     }
 
-    pub async fn try_recv(&self, timeout_ms: u64) -> Option<Vec<u8>> {
+    /// Same as `recv_timeout`, but returns `None` on timeout instead of `Err`.
+    pub async fn try_recv(&self, timeout_ms: u64) -> Option<(Vec<u8>, SocketAddr)> {
         match self {
             Transport::Udp(udp) => udp.try_recv(timeout_ms).await,
             Transport::Tcp(tcp) => tcp.try_recv(timeout_ms).await,
@@ -133,6 +137,25 @@ impl Transport {
     pub fn set_peer_filter(&self, peer: SocketAddr) {
         if let Transport::Udp(ref udp) = self {
             udp.set_peer_filter(peer);
+        }
+    }
+
+    /// Learn an additional trusted source IP after a response from it was
+    /// matched to a transaction we initiated (no-op on TCP/TLS, which have
+    /// only one possible peer). See `UdpTransport::learn_peer`.
+    pub fn learn_peer(&self, peer: SocketAddr) {
+        if let Transport::Udp(ref udp) = self {
+            udp.learn_peer(peer);
+        }
+    }
+
+    /// Whether `peer` is a trusted source for a fresh *inbound request*
+    /// (SIP spoofing protection). Always true on TCP/TLS, which only ever
+    /// deliver data from the single address they connected to.
+    pub fn is_peer_allowed(&self, peer: SocketAddr) -> bool {
+        match self {
+            Transport::Udp(udp) => udp.is_allowed(peer),
+            Transport::Tcp(_) | Transport::Tls(_) => true,
         }
     }
 

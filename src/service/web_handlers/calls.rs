@@ -42,7 +42,11 @@ pub async fn call_account(
                 rx.start(codec, Some(audio_tx));
             }
             if client.settings.session_timers {
-                crate::service::managed_client::spawn_session_refresher(client_arc.clone(), 1800);
+                let interval: u64 = client.session_expires_secs.unwrap_or(1800).into();
+                crate::service::managed_client::spawn_session_refresher(
+                    client_arc.clone(),
+                    interval,
+                );
             }
             Ok(Json(
                 serde_json::json!({ "success": true, "msg": "Call established" }),

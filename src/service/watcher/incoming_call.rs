@@ -209,6 +209,12 @@ pub async fn incoming_call_watcher(
                     );
                     {
                         let c = client.lock().await;
+                        let branch = utils::extract_param(&m, "Via", "branch");
+                        let key = crate::sip::TransactionKey::new(branch, "CANCEL");
+                        let is_reliable = c.transport.via_str() != "UDP";
+                        c.transaction_mgr
+                            .record_server_response(key, cancel_response.clone(), is_reliable)
+                            .await;
                         let _ = c
                             .transport
                             .send_to(cancel_response.as_bytes(), c.server_addr)
@@ -262,7 +268,14 @@ pub async fn incoming_call_watcher(
             c.rtp_receiver = Some(receiver.clone());
             c.rtp_port = Some(bound_rtp_port);
             if c.settings.session_timers {
-                crate::service::managed_client::spawn_session_refresher(client.clone(), 1800);
+                let interval = utils::parse_session_expires(&msg)
+                    .map(|se| se.delta_seconds)
+                    .unwrap_or(1800);
+                c.session_expires_secs = Some(interval);
+                crate::service::managed_client::spawn_session_refresher(
+                    client.clone(),
+                    interval.into(),
+                );
             }
         }
         crate::service::logger::record_call_connect(&call_id);
@@ -337,6 +350,12 @@ pub async fn incoming_call_watcher(
 
                     {
                         let c = client.lock().await;
+                        let branch = utils::extract_param(&m, "Via", "branch");
+                        let key = crate::sip::TransactionKey::new(branch, "BYE");
+                        let is_reliable = c.transport.via_str() != "UDP";
+                        c.transaction_mgr
+                            .record_server_response(key, response.clone(), is_reliable)
+                            .await;
                         let _ = c
                             .transport
                             .send_to(response.as_bytes(), c.server_addr)

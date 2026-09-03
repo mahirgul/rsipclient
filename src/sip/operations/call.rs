@@ -59,7 +59,20 @@ impl SipClient {
             self.transport.via_str(),
         );
 
-        let resp = self.send(&msg).await?;
+        // The transaction layer (execute_invite) already retransmits per Timer
+        // A and waits internally for a final (non-1xx) response or a Timer B
+        // timeout, so `resp` here is never provisional. A send error (e.g.
+        // Timer B expiry) must still clear the `remote_uri` set above so a
+        // failed call doesn't leave stale call state behind.
+        let resp = match self.send(&msg).await {
+            Ok(r) => r,
+            Err(e) => {
+                log::error!("INVITE failed: {}", e);
+                crate::service::logger::record_call_end(&call_id, "Failed", 0);
+                self.remote_uri = None;
+                return Ok(false);
+            }
+        };
         let status = utils::parse_status_code(&resp)?;
 
         // Handle 401/407 auth challenge for INVITE
@@ -88,7 +101,17 @@ impl SipClient {
                     self.transport.via_str(),
                 );
 
-                let mut resp2 = self.send(&auth_msg).await?;
+                let mut resp2 = match self.send(&auth_msg).await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        log::warn!(
+                            "Auth INVITE send failed for realm={} ({}), trying next challenge if available",
+                            challenge.realm,
+                            e
+                        );
+                        continue;
+                    }
+                };
                 let mut status2 = utils::parse_status_code(&resp2)?;
 
                 // A proxy whose nonce expired answers stale=true with a fresh one;
@@ -111,42 +134,26 @@ impl SipClient {
                         &self.settings,
                         self.transport.via_str(),
                     );
-                    resp2 = self.send(&retry_msg).await?;
+                    resp2 = match self.send(&retry_msg).await {
+                        Ok(r) => r,
+                        Err(e) => {
+                            log::warn!(
+                                "Stale-retry INVITE send failed for realm={} ({}), trying next challenge if available",
+                                challenge.realm,
+                                e
+                            );
+                            continue;
+                        }
+                    };
                     status2 = utils::parse_status_code(&resp2)?;
                     // The ACK and the dialog's CSeq must track the request that was
                     // actually answered.
                     auth_cseq = retry_cseq;
                 }
 
-                let mut final_status2 = status2;
-                let mut final_resp2 = resp2.clone();
-                let mut final_tag2 = utils::extract_to_tag(&resp2);
-
-                while (100..200).contains(&final_status2) {
-                    log::info!(
-                        "Got provisional response {} (auth INVITE) — waiting for final...",
-                        final_status2
-                    );
-                    final_resp2 = match self.recv_extra(30000).await {
-                        Ok(r) => r,
-                        Err(e) => {
-                            log::error!("Error waiting for final response (auth INVITE): {}", e);
-                            self.remote_uri = None;
-                            return Ok(false);
-                        }
-                    };
-                    final_status2 = match utils::parse_status_code(&final_resp2) {
-                        Ok(s) => s,
-                        Err(e) => {
-                            log::error!("Error parsing status (auth INVITE): {}", e);
-                            self.remote_uri = None;
-                            return Ok(false);
-                        }
-                    };
-                    if let Some(t) = utils::extract_to_tag(&final_resp2) {
-                        final_tag2 = Some(t);
-                    }
-                }
+                let final_status2 = status2;
+                let final_resp2 = resp2;
+                let final_tag2 = utils::extract_to_tag(&final_resp2);
 
                 if final_status2 == 200 {
                     self.call_id = Some(call_id.clone());
@@ -159,6 +166,10 @@ impl SipClient {
                     self.in_call = true;
                     sdp::warn_codec_mismatch(configured_codec, &final_resp2);
                     self.call_start_time = Some(std::time::Instant::now());
+                    if self.settings.session_timers {
+                        self.session_expires_secs =
+                            utils::parse_session_expires(&final_resp2).map(|se| se.delta_seconds);
+                    }
                     self.send_ack(target_uri, &local, &call_id, auth_cseq)
                         .await?;
                     log::info!(
@@ -183,36 +194,10 @@ impl SipClient {
             return Ok(false);
         }
 
-        // Wait for final response if we received provisional (1xx) responses
-        let mut final_status = status;
-        let mut final_resp = resp.clone();
-        let mut final_tag = utils::extract_to_tag(&resp);
-
-        while (100..200).contains(&final_status) {
-            log::info!(
-                "Got provisional response {} — waiting for final...",
-                final_status
-            );
-            final_resp = match self.recv_extra(30000).await {
-                Ok(r) => r,
-                Err(e) => {
-                    log::error!("Error waiting for final response: {}", e);
-                    self.remote_uri = None;
-                    return Ok(false);
-                }
-            };
-            final_status = match utils::parse_status_code(&final_resp) {
-                Ok(s) => s,
-                Err(e) => {
-                    log::error!("Error parsing status: {}", e);
-                    self.remote_uri = None;
-                    return Ok(false);
-                }
-            };
-            if let Some(t) = utils::extract_to_tag(&final_resp) {
-                final_tag = Some(t);
-            }
-        }
+        // execute_invite already waited for the final (non-1xx) response.
+        let final_status = status;
+        let final_resp = resp;
+        let final_tag = utils::extract_to_tag(&final_resp);
 
         if final_status == 200 {
             self.call_id = Some(call_id.clone());
@@ -224,6 +209,10 @@ impl SipClient {
             self.rtp_receiver = Some(receiver);
             self.rtp_port = Some(bound_rtp_port);
             sdp::warn_codec_mismatch(configured_codec, &final_resp);
+            if self.settings.session_timers {
+                self.session_expires_secs =
+                    utils::parse_session_expires(&final_resp).map(|se| se.delta_seconds);
+            }
             self.send_ack(target_uri, &local, &call_id, cseq).await?;
             log::info!("Call established! Remote RTP: {:?}", self.remote_rtp_addr);
             crate::service::logger::record_call_connect(&call_id);

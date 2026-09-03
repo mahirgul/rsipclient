@@ -9,6 +9,10 @@ use tokio::net::TcpStream;
 pub struct TcpTransport {
     stream: tokio::sync::Mutex<TcpStream>,
     local_addr: SocketAddr,
+    /// Remote address this stream is connected to — TCP/TLS are
+    /// connection-oriented, so every received message's "source" is this
+    /// fixed peer, unlike UDP where it varies per-packet.
+    peer_addr: SocketAddr,
     /// Buffer for partial reads
     read_buf: tokio::sync::Mutex<Vec<u8>>,
 }
@@ -31,6 +35,7 @@ impl TcpTransport {
         Ok(Self {
             stream: tokio::sync::Mutex::new(tcp),
             local_addr,
+            peer_addr: server_addr,
             read_buf: tokio::sync::Mutex::new(Vec::new()),
         })
     }
@@ -51,24 +56,25 @@ impl TcpTransport {
     }
 
     /// Receive a single SIP message with timeout.
-    pub async fn recv_timeout(&self, timeout_ms: u64) -> Result<Vec<u8>> {
-        tokio::time::timeout(
+    pub async fn recv_timeout(&self, timeout_ms: u64) -> Result<(Vec<u8>, SocketAddr)> {
+        let msg = tokio::time::timeout(
             std::time::Duration::from_millis(timeout_ms),
             self.recv_sip_message(),
         )
         .await
-        .context("TCP receive timed out")?
+        .context("TCP receive timed out")??;
+        Ok((msg, self.peer_addr))
     }
 
     /// Try to receive with a short timeout. Returns None if nothing arrived.
-    pub async fn try_recv(&self, timeout_ms: u64) -> Option<Vec<u8>> {
+    pub async fn try_recv(&self, timeout_ms: u64) -> Option<(Vec<u8>, SocketAddr)> {
         match tokio::time::timeout(
             std::time::Duration::from_millis(timeout_ms),
             self.recv_sip_message(),
         )
         .await
         {
-            Ok(Ok(msg)) => Some(msg),
+            Ok(Ok(msg)) => Some((msg, self.peer_addr)),
             _ => None,
         }
     }
