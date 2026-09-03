@@ -16,10 +16,10 @@ app_name = "rsipclient"
 
 [[accounts]]
 name = "default"
-username = "2001"
-password = "20+Sopho-07"
-server = "172.16.50.11:5060"
-domain = "172.16.50.11"
+username = "1000"
+password = "changeme"
+server = "127.0.0.1:5060"
+domain = "localhost"
 sip_port = 5060
 rtp_port_start = 8000
 rtp_port_end = 8010

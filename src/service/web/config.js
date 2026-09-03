@@ -381,9 +381,28 @@ async function populateModalAudioDevices(selectedInputId = "", selectedOutputId 
     }
 }
 
+// Helper to toggle secret input visibility without triggering browser password managers
+function toggleSecretVisibility(inputId, btn) {
+    const el = document.getElementById(inputId);
+    if (!el) return;
+    if (el.classList.contains('revealed')) {
+        el.classList.remove('revealed');
+        if (btn) btn.textContent = '👁️';
+    } else {
+        el.classList.add('revealed');
+        if (btn) btn.textContent = '🙈';
+    }
+}
+
 // Account addition and modification forms
 async function openAddAccountModal() {
     document.getElementById('account-form').reset();
+    document.getElementById('acc-username').value = '';
+    document.getElementById('acc-password').value = '';
+    document.getElementById('acc-password').classList.remove('revealed');
+    const pwdToggle = document.getElementById('acc-password-toggle');
+    if (pwdToggle) pwdToggle.textContent = '👁️';
+
     document.getElementById('edit-original-name').value = '';
     document.getElementById('modal-mode-title').innerText = 'Add SIP Account';
     document.getElementById('acc-name').disabled = false;
@@ -422,6 +441,9 @@ async function openEditAccountModal(name) {
         document.getElementById('acc-name').disabled = true; // Cannot rename ID during edit
         document.getElementById('acc-username').value = acc.username;
         document.getElementById('acc-password').value = acc.password;
+        document.getElementById('acc-password').classList.remove('revealed');
+        const pwdToggle = document.getElementById('acc-password-toggle');
+        if (pwdToggle) pwdToggle.textContent = '👁️';
         document.getElementById('acc-server').value = acc.server;
         document.getElementById('acc-domain').value = acc.domain || '';
         document.getElementById('acc-sip-port').value = acc.sip_port;
@@ -468,6 +490,10 @@ async function openEditAccountModal(name) {
 
 function closeAccountModal() {
     document.getElementById('account-modal').classList.remove('active');
+    const accPwd = document.getElementById('acc-password');
+    if (accPwd) accPwd.classList.remove('revealed');
+    const pwdToggle = document.getElementById('acc-password-toggle');
+    if (pwdToggle) pwdToggle.textContent = '👁️';
 }
 
 // Form Submit for Add/Edit

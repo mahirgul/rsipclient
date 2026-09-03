@@ -847,3 +847,51 @@ footer.app-footer a:hover {
     font-size: 0.85rem;
 }
 
+/* Password & sensitive credential masking without browser credential detection */
+.secret-input {
+    -webkit-text-security: disc !important;
+    text-security: disc !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.secret-input.revealed {
+    -webkit-text-security: none !important;
+    text-security: none !important;
+}
+
+.secret-field-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.secret-field-wrapper input {
+    padding-right: 2.4rem !important;
+}
+
+.secret-toggle-btn {
+    position: absolute;
+    right: 0.5rem;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0.25rem;
+    color: var(--text-secondary);
+    opacity: 0.6;
+    transition: opacity 0.2s ease, transform 0.1s ease;
+    user-select: none;
+    z-index: 2;
+}
+
+.secret-toggle-btn:hover {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.secret-toggle-btn:active {
+    transform: scale(0.95);
+}
+

@@ -203,17 +203,17 @@ async function updateDashboard() {
                         <button class="btn btn-danger action-btn action-btn-sm" style="width:auto; padding: 0.35rem 0.6rem; font-size: 0.75rem;" onclick="hangupCall('${call.name}')">Hangup</button>
                         
                         <div style="display: inline-flex; gap: 0.2rem; background: rgba(255,255,255,0.05); padding: 0.2rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
-                            <input type="text" id="dtmf-${call.name}" placeholder="DTMF" style="width: 50px; background: transparent; border: none; color: #fff; font-size: 0.75rem; outline: none; text-align: center;">
+                            <input type="text" id="dtmf-${call.name}" placeholder="DTMF" autocomplete="off" spellcheck="false" style="width: 50px; background: transparent; border: none; color: #fff; font-size: 0.75rem; outline: none; text-align: center;">
                             <button class="btn btn-primary action-btn action-btn-sm" style="width:auto; padding: 0.2rem 0.4rem; font-size: 0.7rem; border-radius: 2px;" onclick="sendDtmfCall('${call.name}')">Send</button>
                         </div>
                         
                         <div style="display: inline-flex; gap: 0.2rem; background: rgba(255,255,255,0.05); padding: 0.2rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
-                            <input type="text" id="refer-${call.name}" placeholder="Transfer URI" style="width: 100px; background: transparent; border: none; color: #fff; font-size: 0.75rem; outline: none; text-align: center;">
+                            <input type="text" id="refer-${call.name}" placeholder="Transfer URI" autocomplete="off" spellcheck="false" style="width: 100px; background: transparent; border: none; color: #fff; font-size: 0.75rem; outline: none; text-align: center;">
                             <button class="btn btn-primary action-btn action-btn-sm" style="width:auto; padding: 0.2rem 0.4rem; font-size: 0.7rem; border-radius: 2px;" onclick="transferCall('${call.name}')">Transfer</button>
                         </div>
                         
                         <div style="display: inline-flex; gap: 0.2rem; background: rgba(255,255,255,0.05); padding: 0.2rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
-                            <input type="text" id="play-${call.name}" placeholder="WAV Path" style="width: 80px; background: transparent; border: none; color: #fff; font-size: 0.75rem; outline: none; text-align: center;">
+                            <input type="text" id="play-${call.name}" placeholder="WAV Path" autocomplete="off" spellcheck="false" style="width: 80px; background: transparent; border: none; color: #fff; font-size: 0.75rem; outline: none; text-align: center;">
                             <button class="btn btn-primary action-btn action-btn-sm" style="width:auto; padding: 0.2rem 0.4rem; font-size: 0.7rem; border-radius: 2px;" onclick="playWavCall('${call.name}')">Play</button>
                         </div>
                     </td>

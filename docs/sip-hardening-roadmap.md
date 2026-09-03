@@ -11,6 +11,7 @@ kullanılmak üzere hazırlanmıştır.
 |-----|--------|-------|
 | 1 | Somut bug'lar (7 kalem) | ✅ Tamamlandı (commit `9a6c38c`) |
 | 1b | Auth doğruluğu + servis sertleştirme (küçük kalemler) | ✅ Tamamlandı (v2.5.0) |
+| 1c | Config alan doğrulaması + tampon sınırları | ✅ Tamamlandı (v2.5.1) |
 | 2 | Mimari (transaction layer, session timers, PRACK) | ⬜ Bekliyor |
 | 3 | İleri (NAT traversal, SRTP, SDP parser) | ⬜ Bekliyor |
 
@@ -80,6 +81,25 @@ auth kalemleri. `cargo fmt` / `cargo clippy -D warnings` / `cargo test`
 12. **`stale=true` yeniden deneme** — REGISTER/UNREGISTER/INVITE, süresi dolmuş
     nonce için taze nonce'la bir kez yeniden deneniyor
     (`stale_retry_challenge`); düz reddedilmeler yeniden denenmiyor.
+
+---
+
+## Faz 1c — Tamamlandı (v2.5.1)
+
+`cargo fmt` / `cargo clippy -D warnings` / `cargo test` (62 test) ile doğrulandı.
+
+1. **Hesap URI alanlarının doğrulanması** — `config::validate` yalnızca
+   `display_name`/`asserted_id`/`preferred_id`/`user_agent` alanlarını kontrol
+   ediyordu; oysa `username`, `domain` ve `server` istek satırına ve
+   From/To/Contact URI'lerine ham olarak giriyor. Hesaplar dashboard'dan
+   yazılabildiği için (`POST /api/accounts`, `PUT /api/config`) buradaki bir
+   CR/LF hesabın gönderdiği her REGISTER ve INVITE'a başlık enjekte ediyordu.
+   Artık control karakter, boşluk ve `<` `>` `"` reddediliyor.
+2. **DTMF tampon sınırı** — `take_dtmf_events` hiç çağrılmıyor, `take_dtmf` ise
+   yalnızca IVR oturumu tarafından boşaltılıyor; menüsüz auto-answer yapan bir
+   hesapta karşı taraf telephone-event gönderdikçe iki tampon da çağrı boyunca
+   büyüyordu. v2.5.0'daki kayıt tamponu sınırıyla tutarlı şekilde 512 kalemle
+   sınırlandı.
 
 ---
 
@@ -183,6 +203,12 @@ Yapılacaklar:
   (transaction layer ile birlikte).
 - **Hold/transfer için `stale` yeniden deneme** — REGISTER/INVITE'a eklendi;
   `hold_transfer.rs` ve `transfer.rs` yollarında henüz yok.
+- **SIP kaynak filtresi (açık)** — `transport/udp.rs` gelen paketin kaynak
+  adresini (`_src`) yok sayıyor; SIP portuna erişebilen üçüncü bir taraf sahte
+  `BYE` ile canlı çağrıyı düşürebilir veya sahte `INVITE` ile auto-answer
+  tetikleyebilir. RTP tarafındaki simetrik latch'in (Faz 1b, kalem 5) SIP
+  karşılığı henüz yok. Faz 2.1'deki branch/CSeq eşlemesi bunun büyük kısmını
+  kapatır; öncesinde ucuz bir ara çözüm olarak sunucu adresi filtresi eklenebilir.
 - **Testler** — Mesaj builder'ları için testler mevcut; parser'a fuzz target ve
   transport/transaction için entegrasyon testleri (SIPp benzeri) eklenmesi değerli.
 

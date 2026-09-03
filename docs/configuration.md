@@ -22,6 +22,11 @@ name = "my-account"
 | `domain` | string | `"sip.example.com"` | SIP domain |
 | `server` | string | `"192.168.1.1:5060"` | SIP server `host:port` |
 
+> `username`, `domain` and `server` are placed into the SIP request URI and the
+> From/To/Contact URIs verbatim, so they may not contain control characters,
+> whitespace, `<`, `>` or `"`. A config carrying one of these is rejected on load
+> and when saved through the dashboard, rather than producing malformed requests.
+
 ### Optional — Network
 
 | Field | Type | Default | Description |
@@ -51,6 +56,24 @@ name = "my-account"
 | `dtmf_mode` | `"rfc2833"` / `"inband"` / `"info"` | — | DTMF signalling |
 | `early_media` | bool | `true` | 183 Session Progress |
 | `session_timers` | bool | `false` | RFC 4028 |
+
+### Optional — TLS (`transport = "tls"`)
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `tls_verify_cert` | bool | `true` | Verify the server certificate chain against the system roots (and `tls_ca_cert`) |
+| `tls_verify_hostname` | bool | `true` | Verify that the certificate matches `domain` |
+| `tls_ca_cert` | path | — | PEM file with additional CA certificate(s), for a private or self-signed CA |
+
+```toml
+transport = "tls"
+tls_ca_cert = "/etc/rsipclient/pbx-ca.pem"
+```
+
+> Turning either verification off accepts any certificate, which removes the
+> protection TLS was added for and allows a man-in-the-middle to read the
+> signalling — including the Digest credentials. Point `tls_ca_cert` at your own
+> CA instead of disabling verification for a self-signed PBX certificate.
 
 ### Optional — Audio Hardware & Sound Cards
 

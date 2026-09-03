@@ -258,15 +258,18 @@
                         <h3 style="margin-top: 0; margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem; color: var(--accent-primary);">Web Dashboard Service</h3>
                         <div class="form-group" style="margin-bottom: 1rem;">
                             <label style="display: block; font-size: 0.85rem; margin-bottom: 0.3rem; opacity: 0.8;">HTTP Server Port</label>
-                            <input type="number" id="settings-web-port" class="form-input" style="width: 100%;" placeholder="9090">
+                            <input type="number" id="settings-web-port" class="form-input" style="width: 100%;" placeholder="9090" autocomplete="off">
                         </div>
                         <div class="form-group" style="margin-bottom: 1rem;">
                             <label style="display: block; font-size: 0.85rem; margin-bottom: 0.3rem; opacity: 0.8;">Admin Username</label>
-                            <input type="text" id="settings-web-user" class="form-input" style="width: 100%;" placeholder="admin">
+                            <input type="text" id="settings-web-user" class="form-input" style="width: 100%;" placeholder="admin" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other">
                         </div>
                         <div class="form-group" style="margin-bottom: 0;">
                             <label style="display: block; font-size: 0.85rem; margin-bottom: 0.3rem; opacity: 0.8;">Admin Password</label>
-                            <input type="password" id="settings-web-pass" class="form-input" style="width: 100%;" placeholder="••••••••">
+                            <div class="secret-field-wrapper">
+                                <input type="text" id="settings-web-pass" class="form-input secret-input" style="width: 100%;" placeholder="••••••••" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other">
+                                <button type="button" class="secret-toggle-btn" onclick="toggleSecretVisibility('settings-web-pass', this)" title="Show/Hide Password">👁️</button>
+                            </div>
                         </div>
                     </div>
 
@@ -275,15 +278,18 @@
                         <h3 style="margin-top: 0; margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem; color: var(--accent-success);">REST Command API</h3>
                         <div class="form-group" style="margin-bottom: 1rem;">
                             <label style="display: block; font-size: 0.85rem; margin-bottom: 0.3rem; opacity: 0.8;">API Listener Port</label>
-                            <input type="number" id="settings-cmd-port" class="form-input" style="width: 100%;" placeholder="9099">
+                            <input type="number" id="settings-cmd-port" class="form-input" style="width: 100%;" placeholder="9099" autocomplete="off">
                         </div>
                         <div class="form-group" style="margin-bottom: 1rem;">
                             <label style="display: block; font-size: 0.85rem; margin-bottom: 0.3rem; opacity: 0.8;">API Username (Optional)</label>
-                            <input type="text" id="settings-cmd-user" class="form-input" style="width: 100%;" placeholder="Basic auth user (falls back to web admin)">
+                            <input type="text" id="settings-cmd-user" class="form-input" style="width: 100%;" placeholder="Basic auth user (falls back to web admin)" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other">
                         </div>
                         <div class="form-group" style="margin-bottom: 0;">
                             <label style="display: block; font-size: 0.85rem; margin-bottom: 0.3rem; opacity: 0.8;">API Password (Optional)</label>
-                            <input type="password" id="settings-cmd-pass" class="form-input" style="width: 100%;" placeholder="Basic auth pass (falls back to web admin)">
+                            <div class="secret-field-wrapper">
+                                <input type="text" id="settings-cmd-pass" class="form-input secret-input" style="width: 100%;" placeholder="Basic auth pass (falls back to web admin)" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other">
+                                <button type="button" class="secret-toggle-btn" onclick="toggleSecretVisibility('settings-cmd-pass', this)" title="Show/Hide Password">👁️</button>
+                            </div>
                         </div>
                     </div>
 
@@ -456,33 +462,36 @@
                 <h3 id="modal-mode-title" class="modal-title">Configure Account</h3>
                 <button class="close-btn" onclick="closeAccountModal()">&times;</button>
             </div>
-            <form id="account-form">
+            <form id="account-form" autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other">
                 <input type="hidden" id="edit-original-name">
                 
                 <div class="form-group">
                     <label for="acc-name">ACCOUNT IDENTITY NAME (Must be unique)</label>
-                    <input type="text" id="acc-name" class="form-control" required placeholder="e.g. alice-office">
+                    <input type="text" id="acc-name" class="form-control" required placeholder="e.g. alice-office" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other">
                 </div>
 
                 <div class="form-row">
                     <div class="form-group">
                         <label for="acc-username">SIP USERNAME</label>
-                        <input type="text" id="acc-username" class="form-control" required placeholder="e.g. 1001">
+                        <input type="text" id="acc-username" class="form-control" required placeholder="e.g. 1001" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other">
                     </div>
                     <div class="form-group">
                         <label for="acc-password">SIP PASSWORD</label>
-                        <input type="password" id="acc-password" class="form-control" required placeholder="password">
+                        <div class="secret-field-wrapper">
+                            <input type="text" id="acc-password" class="form-control secret-input" required placeholder="password" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other">
+                            <button type="button" id="acc-password-toggle" class="secret-toggle-btn" onclick="toggleSecretVisibility('acc-password', this)" title="Show/Hide Password">👁️</button>
+                        </div>
                     </div>
                 </div>
 
                 <div class="form-row">
                     <div class="form-group">
                         <label for="acc-server">SIP SERVER (Host:Port)</label>
-                        <input type="text" id="acc-server" class="form-control" required placeholder="e.g. 192.168.1.100:5060">
+                        <input type="text" id="acc-server" class="form-control" required placeholder="e.g. 192.168.1.100:5060" autocomplete="off" spellcheck="false" data-lpignore="true">
                     </div>
                     <div class="form-group">
                         <label for="acc-domain">SIP DOMAIN (Optional)</label>
-                        <input type="text" id="acc-domain" class="form-control" placeholder="e.g. registrar.com">
+                        <input type="text" id="acc-domain" class="form-control" placeholder="e.g. registrar.com" autocomplete="off" spellcheck="false" data-lpignore="true">
                     </div>
                 </div>
 
@@ -581,28 +590,28 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label for="acc-display-name">DISPLAY NAME (Header From)</label>
-                        <input type="text" id="acc-display-name" class="form-control" placeholder="e.g. John Doe">
+                        <input type="text" id="acc-display-name" class="form-control" placeholder="e.g. John Doe" autocomplete="off" spellcheck="false">
                     </div>
                     <div class="form-group">
                         <label for="acc-user-agent">CUSTOM USER-AGENT</label>
-                        <input type="text" id="acc-user-agent" class="form-control" placeholder="e.g. CustomSIP/1.0">
+                        <input type="text" id="acc-user-agent" class="form-control" placeholder="e.g. CustomSIP/1.0" autocomplete="off" spellcheck="false">
                     </div>
                 </div>
 
                 <div class="form-row">
                     <div class="form-group">
                         <label for="acc-register-expiry">REGISTRATION EXPIRY (seconds)</label>
-                        <input type="number" id="acc-register-expiry" class="form-control" min="10" max="86400" value="3600">
+                        <input type="number" id="acc-register-expiry" class="form-control" min="10" max="86400" value="3600" autocomplete="off">
                     </div>
                     <div class="form-group">
                         <label for="acc-register-retry">REGISTRATION RETRY INTERVAL (seconds)</label>
-                        <input type="number" id="acc-register-retry" class="form-control" min="5" max="3600" value="30">
+                        <input type="number" id="acc-register-retry" class="form-control" min="5" max="3600" value="30" autocomplete="off">
                     </div>
                 </div>
 
                 <div class="form-group">
                     <label for="acc-proxy">OUTBOUND PROXY (Host:Port)</label>
-                    <input type="text" id="acc-proxy" class="form-control" placeholder="e.g. 192.168.1.254:5060">
+                    <input type="text" id="acc-proxy" class="form-control" placeholder="e.g. 192.168.1.254:5060" autocomplete="off" spellcheck="false">
                 </div>
 
                 <div class="checkbox-row" style="display: flex; gap: 2rem; margin-bottom: 1.5rem;">

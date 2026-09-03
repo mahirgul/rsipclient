@@ -4,7 +4,7 @@
   <a href="https://github.com/mahirgul/rsipclient/actions/workflows/ci.yml">
     <img src="https://img.shields.io/github/actions/workflow/status/mahirgul/rsipclient/ci.yml?branch=master&style=for-the-badge&logo=github-actions&logoColor=white&label=CI&color=2ea44f" alt="CI Status">
   </a>
-  <img src="https://img.shields.io/badge/Release-v2.3.0-blue?style=for-the-badge&logo=git&logoColor=white" alt="Release v2.3.0">
+  <img src="https://img.shields.io/badge/Release-v2.5.2-blue?style=for-the-badge&logo=git&logoColor=white" alt="Release v2.5.2">
   <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License">
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey?style=for-the-badge" alt="Windows, Linux & macOS">
   <a href="https://mahirgul.github.io/rsipclient/">
@@ -61,14 +61,14 @@ Ideal for:
 
 - **Multi-account** — manage multiple SIP registrations simultaneously
 - **SIP signalling** — REGISTER, INVITE, BYE, CANCEL, ACK, REFER
-- **MD5 digest** authentication (RFC 2617)
+- **MD5 digest** authentication (RFC 2617) — `qop="auth"`, `Proxy-Authorization` for 407 challenges, and a single retry on an expired (`stale`) nonce
 - **RTP streaming** — G.711 μ-law, A-law, Opus codecs
 - **Visual IVR Builder** — configure welcome audio, timeouts, and DTMF menu actions graphically
 - **Web Audio Manager** — upload, play, and delete audio clips; record mono 8kHz WAV from browser microphone
 - **SIP Packet Tracer** — sequence diagram of SIP signaling flow with message inspectors
 - **Call History Logs** — detailed records of active/past calls with captured DTMF tones
 - **Live System Charts** — real-time SVG sparklines for CPU and memory usage
-- **SIP transports** — UDP, TCP (validated), and TLS (SIPS)
+- **SIP transports** — UDP, TCP (validated), and TLS (SIPS) with certificate and hostname verification on by default, plus a custom CA option
 - **RFC 2833 DTMF** — in-band telephone-event detection
 - **RFC 3325** — P-Asserted-Identity, P-Preferred-Identity headers
 - **RFC 4028** — Session-Expires / session timers
@@ -273,6 +273,10 @@ ivr_default = "transfer:sip:operator@sip.example.com"
 | `rtp_port_end` | u16 | — | RTP port range end |
 | `auth_method` | md5/none | md5 | Authentication method |
 | `codec` | pcmu/pcma/opus | pcmu | Audio codec |
+| `transport` | udp/tcp/tls | udp | SIP transport protocol |
+| `tls_verify_cert` | bool | true | Verify the server certificate chain |
+| `tls_verify_hostname` | bool | true | Verify the certificate hostname |
+| `tls_ca_cert` | path | — | PEM file with extra CA certificate(s) |
 | `display_name` | string | — | From header display name |
 | `asserted_id` | URI | — | P-Asserted-Identity |
 | `preferred_id` | URI | — | P-Preferred-Identity |
@@ -287,6 +291,12 @@ ivr_default = "transfer:sip:operator@sip.example.com"
 | `ivr_timeout` | u64 | 10 | DTMF timeout (seconds) |
 | `ivr_menu` | map | — | DTMF → action mappings |
 | `ivr_default` | string | — | Default action on timeout |
+| `audio_input_device` | string | default | Hardware microphone device |
+| `audio_output_device` | string | default | Hardware speaker/headset device |
+
+`username`, `domain` and `server` become the SIP request URI and the From/To/Contact
+URIs verbatim, so they may not contain control characters, whitespace, `<`, `>` or `"`.
+A config carrying one is rejected on load and when saved through the dashboard.
 
 ## Architecture
 
