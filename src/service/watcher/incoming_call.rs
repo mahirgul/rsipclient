@@ -122,11 +122,17 @@ pub async fn incoming_call_watcher(
                 "sip"
             };
 
+            let to_formatted = if to_header_val.contains(";tag=") {
+                to_header_val.clone()
+            } else {
+                format!("{};tag={}", to_header_val, c.local_tag)
+            };
+
             format!(
                 "SIP/2.0 200 OK\r\n\
                  {}\r\n\
                  From: {}\r\n\
-                 To: {};tag={}\r\n\
+                 To: {}\r\n\
                  Call-ID: {}\r\n\
                  CSeq: {} INVITE\r\n\
                  Contact: <{}:{}@{}>\r\n\
@@ -136,8 +142,7 @@ pub async fn incoming_call_watcher(
                  {}",
                 via_block,
                 from_header_val,
-                to_header_val,
-                c.local_tag,
+                to_formatted,
                 call_id,
                 cseq,
                 scheme,
@@ -158,7 +163,7 @@ pub async fn incoming_call_watcher(
                 .await;
         }
 
-        // Wait for ACK, handling a CANCEL that races our 200 OK.
+        // Wait for ACK, handling a CANCEL or retransmitted INVITE that races our 200 OK.
         let mut ack_received = false;
         let mut cancelled = false;
         for _ in 0..5 {
@@ -185,7 +190,7 @@ pub async fn incoming_call_watcher(
                         .and_then(|s| s.parse::<u32>().ok())
                         .unwrap_or(1);
 
-                    let response = format!(
+                    let cancel_response = format!(
                         "SIP/2.0 200 OK\r\n\
                          {}\r\n\
                          From: {}\r\n\
@@ -200,11 +205,22 @@ pub async fn incoming_call_watcher(
                         let c = client.lock().await;
                         let _ = c
                             .transport
-                            .send_to(response.as_bytes(), c.server_addr)
+                            .send_to(cancel_response.as_bytes(), c.server_addr)
                             .await;
                     }
                     cancelled = true;
                     break;
+                }
+                Some(m) if m.starts_with("INVITE") => {
+                    log::debug!(
+                        "[{}] Remote retransmitted INVITE during ACK wait, resending 200 OK",
+                        account_name
+                    );
+                    let c = client.lock().await;
+                    let _ = c
+                        .transport
+                        .send_to(response.as_bytes(), c.server_addr)
+                        .await;
                 }
                 _ => {
                     // Timeout or unrelated message — keep waiting for ACK.
@@ -218,9 +234,10 @@ pub async fn incoming_call_watcher(
         }
 
         if !ack_received {
-            log::warn!("[{}] No ACK received, skipping call setup", account_name);
-            crate::service::logger::record_call_end(&call_id, "Failed", 0);
-            continue;
+            log::warn!(
+                "[{}] No ACK received within timeout, proceeding with call setup",
+                account_name
+            );
         }
 
         // Start RTP receiver

@@ -42,6 +42,10 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub syslog_app_name: Option<String>,
 
+    /// Launch classic Windows Win32 Desktop Softphone GUI
+    #[arg(short = 'g', long, global = true)]
+    pub gui: bool,
+
     #[command(subcommand)]
     pub command: Option<Command>,
 }

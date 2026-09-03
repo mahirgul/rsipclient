@@ -438,7 +438,7 @@ async function openEditAccountModal(name) {
 
         document.getElementById('edit-original-name').value = acc.name;
         document.getElementById('acc-name').value = acc.name;
-        document.getElementById('acc-name').disabled = true; // Cannot rename ID during edit
+        document.getElementById('acc-name').disabled = false; // Renaming is supported
         document.getElementById('acc-username').value = acc.username;
         document.getElementById('acc-password').value = acc.password;
         document.getElementById('acc-password').classList.remove('revealed');

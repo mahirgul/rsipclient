@@ -107,8 +107,8 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    // --- GUI mode ---
-    if let Some(Command::Gui) = cli.command {
+    // --- GUI mode (via flag --gui/-g or subcommand gui) ---
+    if cli.gui || matches!(cli.command, Some(Command::Gui)) {
         return win32_gui::run_gui(cli.config.clone(), cli.ctrl_port).await;
     }
 

@@ -90,7 +90,7 @@ pub fn extract_auth_challenge(response: &str) -> Option<AuthChallenge> {
     let prefer_proxy = parse_status_code(response)
         .map(|s| s == 407)
         .unwrap_or(false);
-    let mut fallback = None;
+    let mut fallback: Option<AuthChallenge> = None;
 
     for line in response.lines() {
         let proxy = if starts_with_ascii_ci(line, "proxy-authenticate:") {
@@ -105,10 +105,23 @@ pub fn extract_auth_challenge(response: &str) -> Option<AuthChallenge> {
             continue;
         };
 
-        if proxy == prefer_proxy {
+        let is_supported_algo = challenge
+            .algorithm
+            .as_deref()
+            .map(|a| a.eq_ignore_ascii_case("md5"))
+            .unwrap_or(true);
+
+        if proxy == prefer_proxy && is_supported_algo {
             return Some(challenge);
         }
-        if fallback.is_none() {
+
+        let fallback_supported = fallback
+            .as_ref()
+            .and_then(|f| f.algorithm.as_deref())
+            .map(|a| a.eq_ignore_ascii_case("md5"))
+            .unwrap_or(true);
+
+        if fallback.is_none() || (!fallback_supported && is_supported_algo) {
             fallback = Some(challenge);
         }
     }
@@ -425,6 +438,15 @@ mod tests {
         let challenge = extract_auth_challenge(resp).expect("challenge");
         assert_eq!(challenge.realm, "sip.example.com");
         assert_eq!(challenge.nonce, "deadbeef");
+    }
+
+    #[test]
+    fn extract_auth_challenge_skips_unsupported_algorithm_when_md5_present() {
+        let resp = "SIP/2.0 401 Unauthorized\r\n\
+                    WWW-Authenticate: Digest realm=\"sip.example.com\", nonce=\"sha256nonce\", algorithm=SHA-256\r\n\
+                    WWW-Authenticate: Digest realm=\"sip.example.com\", nonce=\"md5nonce\", algorithm=MD5\r\n\r\n";
+        let challenge = extract_auth_challenge(resp).expect("challenge");
+        assert_eq!(challenge.nonce, "md5nonce");
     }
 
     #[test]

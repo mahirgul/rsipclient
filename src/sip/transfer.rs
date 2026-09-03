@@ -53,6 +53,65 @@ pub fn build_refer(
     )
 }
 
+/// Build a REFER request with MD5 Digest authentication (401/407 challenge retry)
+#[allow(clippy::too_many_arguments)]
+pub fn build_refer_with_auth(
+    username: &str,
+    password: &str,
+    domain: &str,
+    remote_uri: &str,
+    refer_to: &str,
+    local_addr: &str,
+    local_tag: &str,
+    remote_tag: &str,
+    call_id: &str,
+    cseq: u32,
+    branch: &str,
+    challenge: &crate::sip::utils::AuthChallenge,
+    settings: &SipSettings,
+    via_transport: &str,
+) -> String {
+    let from = settings.format_from(username, domain);
+    let auth_header = crate::sip::auth::build_authorization_header(
+        username, password, challenge, "REFER", remote_uri,
+    );
+    let scheme = if via_transport.to_uppercase() == "TLS" {
+        "sips"
+    } else {
+        "sip"
+    };
+
+    format!(
+        "REFER {} SIP/2.0\r\n\
+         Via: SIP/2.0/{} {};branch={}\r\n\
+         Max-Forwards: 70\r\n\
+         From: {};tag={}\r\n\
+         To: <{}>;tag={}\r\n\
+         Call-ID: {}\r\n\
+         CSeq: {} REFER\r\n\
+         Contact: <{}:{}@{}>\r\n\
+         Refer-To: <{}>\r\n\
+         {}\r\n\
+         Content-Length: 0\r\n\
+         \r\n",
+        remote_uri,
+        via_transport.to_uppercase(),
+        local_addr,
+        branch,
+        from,
+        local_tag,
+        remote_uri,
+        remote_tag,
+        call_id,
+        cseq,
+        scheme,
+        username,
+        local_addr,
+        refer_to,
+        auth_header,
+    )
+}
+
 /// Build an Attended REFER request with Replaces header (RFC 3891 / RFC 5589)
 #[allow(dead_code)]
 pub fn build_attended_refer(

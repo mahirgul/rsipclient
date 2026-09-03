@@ -20,6 +20,30 @@ pub struct IvrSession {
     codec: Codec,
 }
 
+fn load_wav_file(wav_path: &str) -> Result<Vec<u8>> {
+    if let Ok(data) = std::fs::read(wav_path) {
+        return Ok(data);
+    }
+    // Try in audio/ directory if not found in current working directory
+    let clean = wav_path
+        .trim_start_matches("audio/")
+        .trim_start_matches("audio\\");
+    let audio_dir_path = format!("audio/{}", clean);
+    if let Ok(data) = std::fs::read(&audio_dir_path) {
+        return Ok(data);
+    }
+    // Try file basename in current directory if wav_path contained a folder prefix
+    if let Some(file_name) = std::path::Path::new(wav_path)
+        .file_name()
+        .and_then(|f| f.to_str())
+    {
+        if let Ok(data) = std::fs::read(file_name) {
+            return Ok(data);
+        }
+    }
+    anyhow::bail!("Audio file '{}' not found", wav_path);
+}
+
 impl IvrSession {
     /// Create a new IVR session
     pub fn new(config: IvrConfig, codec: Codec) -> Self {
@@ -33,9 +57,15 @@ impl IvrSession {
         remote: SocketAddr,
         receiver: &RtpReceiver,
     ) -> Result<()> {
-        // Play welcome message
-        self.play_and_collect(client, &self.config.welcome_file, remote, receiver)
-            .await?;
+        // Play welcome message if configured
+        if !self.config.welcome_file.trim().is_empty() {
+            if let Err(e) = self
+                .play_and_collect(client, &self.config.welcome_file, remote, receiver)
+                .await
+            {
+                log::warn!("IVR welcome announcement warning: {}", e);
+            }
+        }
 
         // Menu loop
         loop {
@@ -98,23 +128,25 @@ impl IvrSession {
         remote: SocketAddr,
         receiver: &RtpReceiver,
     ) -> Result<()> {
-        let data = std::fs::read(wav_path)?;
-        let (_info, samples) = crate::rtp::wav::parse_wav(&data)?;
-
-        let client_guard = client.lock().await;
-        let rate = self.codec.clock_rate();
-        drop(client_guard);
+        let data = load_wav_file(wav_path)?;
+        let (info, samples) = crate::rtp::wav::parse_wav(&data)?;
 
         let codec = self.codec;
+        let wav_rate = info.sample_rate;
         let samples_clone = samples.clone();
         let socket = receiver.socket().clone();
         tokio::spawn(async move {
-            let _ =
-                crate::rtp::send_wav_rtp_on_socket(&socket, &samples_clone, rate, remote, codec)
-                    .await;
+            let _ = crate::rtp::send_wav_rtp_on_socket(
+                &socket,
+                &samples_clone,
+                wav_rate,
+                remote,
+                codec,
+            )
+            .await;
         });
 
-        let dur = Duration::from_secs_f64(samples.len() as f64 / rate as f64);
+        let dur = Duration::from_secs_f64(samples.len() as f64 / wav_rate as f64);
         let start_time = Instant::now();
         while Instant::now().duration_since(start_time) < dur {
             let in_call = {

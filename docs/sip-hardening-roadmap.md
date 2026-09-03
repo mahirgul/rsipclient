@@ -201,8 +201,9 @@ Yapılacaklar:
   487 göndermek ikinci bir final yanıt olur ve RFC'ye aykırıdır. 487, ancak
   auto-answer'dan önce CANCEL yakalanacak şekilde akış değiştirilirse anlamlı olur
   (transaction layer ile birlikte).
-- **Hold/transfer için `stale` yeniden deneme** — REGISTER/INVITE'a eklendi;
-  `hold_transfer.rs` ve `transfer.rs` yollarında henüz yok.
+- **Hold/transfer için `stale` yeniden deneme ve REFER auth** — ✅ Tamamlandı.
+  re-INVITE (hold/resume) ve REFER (transfer) yollarına 401/407 Digest kimlik
+  doğrulaması ve `stale=true` taze nonce yeniden denemesi eklendi (`build_refer_with_auth`).
 - **SIP kaynak filtresi (açık)** — `transport/udp.rs` gelen paketin kaynak
   adresini (`_src`) yok sayıyor; SIP portuna erişebilen üçüncü bir taraf sahte
   `BYE` ile canlı çağrıyı düşürebilir veya sahte `INVITE` ile auto-answer

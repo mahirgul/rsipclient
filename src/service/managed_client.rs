@@ -71,11 +71,27 @@ pub async fn create_managed_client(account: &Account) -> Result<ManagedClient> {
     } else {
         let bind_addr: SocketAddr = format!("0.0.0.0:{}", account.sip_port).parse()?;
         let transport = Transport::new_udp(bind_addr).await?;
-        let local_addr = transport.local_addr()?;
+        let bound_addr = transport.local_addr()?;
+        // Resolve routable local IP directed towards server_addr
+        let routed_ip = if bound_addr.ip().is_unspecified() {
+            if let Ok(s) = std::net::UdpSocket::bind("0.0.0.0:0") {
+                if s.connect(server_addr).is_ok() {
+                    s.local_addr().map(|a| a.ip()).unwrap_or(bound_addr.ip())
+                } else {
+                    bound_addr.ip()
+                }
+            } else {
+                bound_addr.ip()
+            }
+        } else {
+            bound_addr.ip()
+        };
+        let local_addr = SocketAddr::new(routed_ip, bound_addr.port());
         log::info!(
-            "Account '{}' using UDP transport to {}",
+            "Account '{}' using UDP transport to {} (local {})",
             account.name,
-            server_addr
+            server_addr,
+            local_addr
         );
         (transport, local_addr)
     };

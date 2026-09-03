@@ -83,8 +83,37 @@ impl SipClient {
                 self.transport.via_str(),
                 &challenge,
             );
-            let resp2 = self.send(&auth_msg).await?;
+            let mut resp2 = self.send(&auth_msg).await?;
             status = utils::parse_status_code(&resp2)?;
+
+            // If the server's nonce was stale, retry with the fresh nonce
+            if let Some(fresh) =
+                crate::sip::operations::register::stale_retry_challenge(status, &resp2)
+            {
+                log::info!("Hold/resume nonce was stale, retrying with the fresh one");
+                cseq = self.next_cseq().await;
+                let retry_msg = crate::sip::transfer::build_hold_with_auth(
+                    &self.username,
+                    &self.password,
+                    &self.domain,
+                    &remote_uri,
+                    &local_ip,
+                    &local,
+                    &self.local_tag,
+                    &remote_tag,
+                    &call_id,
+                    cseq,
+                    &self.new_branch(),
+                    rtp_port,
+                    &self.settings,
+                    resume,
+                    &self.codec,
+                    self.transport.via_str(),
+                    &fresh,
+                );
+                resp2 = self.send(&retry_msg).await?;
+                status = utils::parse_status_code(&resp2)?;
+            }
         }
 
         if status == 200 {
@@ -133,7 +162,59 @@ impl SipClient {
         );
 
         let resp = self.send(&msg).await?;
-        let status = utils::parse_status_code(&resp)?;
+        let mut status = utils::parse_status_code(&resp)?;
+
+        // Handle 401/407 auth challenge on REFER (RFC 3515 / RFC 3261)
+        if (status == 401 || status == 407) && self.auth_method == crate::sip::AuthMethod::Md5 {
+            let challenge = utils::extract_auth_challenge(&resp)
+                .context("Cannot extract WWW-Authenticate params for REFER")?;
+            let mut auth_cseq = self.next_cseq().await;
+            let auth_msg = crate::sip::transfer::build_refer_with_auth(
+                &self.username,
+                &self.password,
+                &self.domain,
+                remote_uri,
+                target_uri,
+                &local,
+                &self.local_tag,
+                remote_tag,
+                call_id,
+                auth_cseq,
+                &self.new_branch(),
+                &challenge,
+                &self.settings,
+                self.transport.via_str(),
+            );
+            let mut resp2 = self.send(&auth_msg).await?;
+            status = utils::parse_status_code(&resp2)?;
+
+            // If the REFER nonce was stale, retry with the fresh nonce
+            if let Some(fresh) =
+                crate::sip::operations::register::stale_retry_challenge(status, &resp2)
+            {
+                log::info!("Transfer REFER nonce was stale, retrying with the fresh one");
+                auth_cseq = self.next_cseq().await;
+                let retry_msg = crate::sip::transfer::build_refer_with_auth(
+                    &self.username,
+                    &self.password,
+                    &self.domain,
+                    remote_uri,
+                    target_uri,
+                    &local,
+                    &self.local_tag,
+                    remote_tag,
+                    call_id,
+                    auth_cseq,
+                    &self.new_branch(),
+                    &fresh,
+                    &self.settings,
+                    self.transport.via_str(),
+                );
+                resp2 = self.send(&retry_msg).await?;
+                status = utils::parse_status_code(&resp2)?;
+            }
+        }
+
         Ok(status == 200 || status == 202)
     }
 }
