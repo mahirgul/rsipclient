@@ -8,7 +8,7 @@ repository = "https://github.com/mahirgul/rsipclient"
 homepage = "https://github.com/mahirgul/rsipclient"
 documentation = "https://github.com/mahirgul/rsipclient#readme"
 readme = "README.md"
-keywords = ["sip", "voip", "rtp", "ivr", "auto-attendant"]
+keywords = ["sip", "voip", "telephony", "cli", "ivr"]
 categories = ["network-programming", "command-line-utilities"]
 authors = ["Mahir Gül <mahirgul@gmail.com>"]
 
