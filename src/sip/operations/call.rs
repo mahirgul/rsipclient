@@ -159,6 +159,14 @@ impl SipClient {
                     self.call_id = Some(call_id.clone());
                     self.invite_cseq = Some(auth_cseq);
                     self.remote_tag = final_tag2;
+                    let mut routes = utils::extract_record_routes(&final_resp2);
+                    routes.reverse();
+                    self.route_set = routes;
+                    if let Some(target) =
+                        utils::extract_uri(&utils::extract_header(&final_resp2, "Contact"))
+                    {
+                        self.remote_target = Some(target);
+                    }
                     self.remote_rtp_addr =
                         crate::service::watcher::parse_sdp_connection(&final_resp2);
                     self.rtp_receiver = Some(receiver);
@@ -190,7 +198,7 @@ impl SipClient {
 
             log::error!("All auth INVITE attempts failed");
             crate::service::logger::record_call_end(&call_id, "Failed", 0);
-            self.remote_uri = None;
+            self.clear_dialog_state();
             return Ok(false);
         }
 
@@ -203,6 +211,13 @@ impl SipClient {
             self.call_id = Some(call_id.clone());
             self.invite_cseq = Some(cseq);
             self.remote_tag = final_tag;
+            let mut routes = utils::extract_record_routes(&final_resp);
+            routes.reverse();
+            self.route_set = routes;
+            if let Some(target) = utils::extract_uri(&utils::extract_header(&final_resp, "Contact"))
+            {
+                self.remote_target = Some(target);
+            }
             self.in_call = true;
             self.call_start_time = Some(std::time::Instant::now());
             self.remote_rtp_addr = crate::service::watcher::parse_sdp_connection(&final_resp);
@@ -221,27 +236,22 @@ impl SipClient {
 
         log::error!("Call failed (status={})", final_status);
         crate::service::logger::record_call_end(&call_id, "Failed", 0);
-        self.in_call = false;
-        self.call_start_time = None;
-        self.call_id = None;
-        self.invite_cseq = None;
-        self.remote_tag = None;
-        self.remote_uri = None;
-        self.remote_rtp_addr = None;
-        self.rtp_receiver = None;
+        self.clear_dialog_state();
         Ok(false)
     }
 
-    /// ACK helper — sent after 200 OK to confirm call setup
-    async fn send_ack(
+    /// ACK helper — sent after 200 OK to confirm call setup or re-INVITE (RFC 3261 §13.2.2.4 & §14.1)
+    pub async fn send_ack(
         &self,
-        target_uri: &str,
+        fallback_target_uri: &str,
         local_addr_str: &str,
         call_id: &str,
         cseq: u32,
     ) -> Result<()> {
+        let ack_target = self.remote_target.as_deref().unwrap_or(fallback_target_uri);
+        let route_headers = utils::format_route_headers(&self.route_set);
         let ack = build_ack(
-            target_uri,
+            ack_target,
             &self.username,
             &self.domain,
             local_addr_str,
@@ -250,6 +260,7 @@ impl SipClient {
             call_id,
             cseq,
             &self.new_branch(),
+            &route_headers,
             &self.settings,
             self.transport.via_str(),
         );
@@ -268,19 +279,25 @@ impl SipClient {
 
         let call_id = self.call_id.clone().context("No call_id")?;
         let remote_tag = self.remote_tag.as_ref().context("No remote_tag")?;
-        let remote_uri = self.remote_uri.as_ref().context("No remote_uri")?;
+        let target = self
+            .remote_target
+            .as_deref()
+            .or(self.remote_uri.as_deref())
+            .context("No remote_uri or remote_target")?;
         let local = self.local_addr_str();
+        let route_headers = utils::format_route_headers(&self.route_set);
 
         let msg = build_bye(
             &self.username,
             &self.domain,
-            remote_uri,
+            target,
             &local,
             &self.local_tag,
             remote_tag,
             &call_id,
             self.next_cseq().await,
             &self.new_branch(),
+            &route_headers,
             &self.settings,
             self.transport.via_str(),
         );
@@ -303,15 +320,7 @@ impl SipClient {
         } else {
             log::error!("Failed to end call cleanly (status={})", status);
         }
-        self.in_call = false;
-        self.call_start_time = None;
-        self.held = false;
-        self.call_id = None;
-        self.invite_cseq = None;
-        self.remote_tag = None;
-        self.remote_rtp_addr = None;
-        self.remote_uri = None;
-        self.rtp_receiver = None;
+        self.clear_dialog_state();
         Ok(status == 200)
     }
 
@@ -322,6 +331,7 @@ impl SipClient {
         let remote_uri = self.remote_uri.as_ref().context("No remote_uri")?;
         let invite_cseq = self.invite_cseq.context("No INVITE CSeq stored")?;
         let local = self.local_addr_str();
+        let route_headers = utils::format_route_headers(&self.route_set);
 
         let msg = build_cancel(
             &self.username,
@@ -332,6 +342,7 @@ impl SipClient {
             call_id,
             invite_cseq,
             &self.new_branch(),
+            &route_headers,
             &self.settings,
             self.transport.via_str(),
         );
@@ -346,14 +357,7 @@ impl SipClient {
                 rx.stop();
             }
             crate::service::logger::record_call_end(call_id, "Cancelled", 0);
-            self.in_call = false;
-            self.call_start_time = None;
-            self.call_id = None;
-            self.invite_cseq = None;
-            self.remote_tag = None;
-            self.remote_rtp_addr = None;
-            self.remote_uri = None;
-            self.rtp_receiver = None;
+            self.clear_dialog_state();
         }
         Ok(success)
     }

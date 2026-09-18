@@ -235,10 +235,12 @@ impl IvrSession {
                 let call_id = cg.call_id.clone().unwrap_or_default();
                 let remote_tag = cg.remote_tag.clone().unwrap_or_default();
                 let remote_uri = cg.remote_uri.clone().unwrap_or_default();
+                let target_peer = cg.remote_target.as_deref().unwrap_or(&remote_uri);
+                let route_headers = crate::sip::utils::format_route_headers(&cg.route_set);
                 let msg = transfer::build_refer(
                     &cg.username,
                     &cg.domain,
-                    &remote_uri,
+                    target_peer,
                     target,
                     &cg.local_addr_str(),
                     &cg.local_tag,
@@ -246,6 +248,7 @@ impl IvrSession {
                     &call_id,
                     cg.next_cseq().await,
                     &cg.new_branch(),
+                    &route_headers,
                     &cg.settings,
                     cg.transport.via_str(),
                 );
@@ -292,10 +295,12 @@ impl IvrSession {
                     let call_id = cg.call_id.clone().unwrap_or_default();
                     let remote_tag = cg.remote_tag.clone().unwrap_or_default();
                     let remote_uri = cg.remote_uri.clone().unwrap_or_default();
+                    let target_peer = cg.remote_target.as_deref().unwrap_or(&remote_uri);
+                    let route_headers = crate::sip::utils::format_route_headers(&cg.route_set);
                     let msg = transfer::build_hold(
                         &cg.username,
                         &cg.domain,
-                        &remote_uri,
+                        target_peer,
                         &cg.local_addr.ip().to_string(),
                         &cg.local_addr_str(),
                         &cg.local_tag,
@@ -304,6 +309,7 @@ impl IvrSession {
                         cg.next_cseq().await,
                         &cg.new_branch(),
                         cg.rtp_port_start,
+                        &route_headers,
                         &cg.settings,
                         false,
                         self.codec.to_config_str(),
@@ -327,10 +333,12 @@ impl IvrSession {
                     let call_id = cg.call_id.clone().unwrap_or_default();
                     let remote_tag = cg.remote_tag.clone().unwrap_or_default();
                     let remote_uri = cg.remote_uri.clone().unwrap_or_default();
+                    let target_peer = cg.remote_target.as_deref().unwrap_or(&remote_uri);
+                    let route_headers = crate::sip::utils::format_route_headers(&cg.route_set);
                     let msg = transfer::build_hold(
                         &cg.username,
                         &cg.domain,
-                        &remote_uri,
+                        target_peer,
                         &cg.local_addr.ip().to_string(),
                         &cg.local_addr_str(),
                         &cg.local_tag,
@@ -339,6 +347,7 @@ impl IvrSession {
                         cg.next_cseq().await,
                         &cg.new_branch(),
                         cg.rtp_port_start,
+                        &route_headers,
                         &cg.settings,
                         true,
                         self.codec.to_config_str(),

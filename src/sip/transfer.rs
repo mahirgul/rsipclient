@@ -3,6 +3,7 @@
 use crate::sip::settings::SipSettings;
 
 /// Build a REFER request to transfer the call to a target
+#[allow(clippy::too_many_arguments)]
 pub fn build_refer(
     username: &str,
     domain: &str,
@@ -14,9 +15,12 @@ pub fn build_refer(
     call_id: &str,
     cseq: u32,
     branch: &str,
+    route_headers: &str,
     settings: &SipSettings,
     via_transport: &str,
 ) -> String {
+    let clean_target = crate::sip::utils::clean_uri(remote_uri);
+    let clean_refer_to = crate::sip::utils::clean_uri(refer_to);
     let from = settings.format_from(username, domain);
     let scheme = if via_transport.to_uppercase() == "TLS" {
         "sips"
@@ -28,6 +32,7 @@ pub fn build_refer(
         "REFER {} SIP/2.0\r\n\
          Via: SIP/2.0/{} {};branch={};rport\r\n\
          Max-Forwards: 70\r\n\
+         {}\
          From: {};tag={}\r\n\
          To: <{}>;tag={}\r\n\
          Call-ID: {}\r\n\
@@ -36,20 +41,21 @@ pub fn build_refer(
          Refer-To: <{}>\r\n\
          Content-Length: 0\r\n\
          \r\n",
-        remote_uri,
+        clean_target,
         via_transport.to_uppercase(),
         local_addr,
         branch,
+        route_headers,
         from,
         local_tag,
-        remote_uri,
+        clean_target,
         remote_tag,
         call_id,
         cseq,
         scheme,
         username,
         local_addr,
-        refer_to,
+        clean_refer_to,
     )
 }
 
@@ -67,13 +73,20 @@ pub fn build_refer_with_auth(
     call_id: &str,
     cseq: u32,
     branch: &str,
+    route_headers: &str,
     challenge: &crate::sip::utils::AuthChallenge,
     settings: &SipSettings,
     via_transport: &str,
 ) -> String {
+    let clean_target = crate::sip::utils::clean_uri(remote_uri);
+    let clean_refer_to = crate::sip::utils::clean_uri(refer_to);
     let from = settings.format_from(username, domain);
     let auth_header = crate::sip::auth::build_authorization_header(
-        username, password, challenge, "REFER", remote_uri,
+        username,
+        password,
+        challenge,
+        "REFER",
+        clean_target,
     );
     let scheme = if via_transport.to_uppercase() == "TLS" {
         "sips"
@@ -85,6 +98,7 @@ pub fn build_refer_with_auth(
         "REFER {} SIP/2.0\r\n\
          Via: SIP/2.0/{} {};branch={};rport\r\n\
          Max-Forwards: 70\r\n\
+         {}\
          From: {};tag={}\r\n\
          To: <{}>;tag={}\r\n\
          Call-ID: {}\r\n\
@@ -94,25 +108,27 @@ pub fn build_refer_with_auth(
          {}\r\n\
          Content-Length: 0\r\n\
          \r\n",
-        remote_uri,
+        clean_target,
         via_transport.to_uppercase(),
         local_addr,
         branch,
+        route_headers,
         from,
         local_tag,
-        remote_uri,
+        clean_target,
         remote_tag,
         call_id,
         cseq,
         scheme,
         username,
         local_addr,
-        refer_to,
+        clean_refer_to,
         auth_header,
     )
 }
 
 /// Build an Attended REFER request with Replaces header (RFC 3891 / RFC 5589)
+#[allow(clippy::too_many_arguments)]
 #[allow(dead_code)]
 pub fn build_attended_refer(
     username: &str,
@@ -128,9 +144,12 @@ pub fn build_attended_refer(
     call_id: &str,
     cseq: u32,
     branch: &str,
+    route_headers: &str,
     settings: &SipSettings,
     via_transport: &str,
 ) -> String {
+    let clean_target = crate::sip::utils::clean_uri(remote_uri);
+    let clean_refer_target = crate::sip::utils::clean_uri(target_uri);
     let from = settings.format_from(username, domain);
     let scheme = if via_transport.to_uppercase() == "TLS" {
         "sips"
@@ -141,13 +160,14 @@ pub fn build_attended_refer(
     // Replaces header value URL encoded
     let refer_to = format!(
         "<{}>?Replaces={}%3Bto-tag%3D{}%3Bfrom-tag%3D{}",
-        target_uri, replaces_call_id, replaces_to_tag, replaces_from_tag
+        clean_refer_target, replaces_call_id, replaces_to_tag, replaces_from_tag
     );
 
     format!(
         "REFER {} SIP/2.0\r\n\
          Via: SIP/2.0/{} {};branch={};rport\r\n\
          Max-Forwards: 70\r\n\
+         {}\
          From: {};tag={}\r\n\
          To: <{}>;tag={}\r\n\
          Call-ID: {}\r\n\
@@ -156,13 +176,14 @@ pub fn build_attended_refer(
          Refer-To: {}\r\n\
          Content-Length: 0\r\n\
          \r\n",
-        remote_uri,
+        clean_target,
         via_transport.to_uppercase(),
         local_addr,
         branch,
+        route_headers,
         from,
         local_tag,
-        remote_uri,
+        clean_target,
         remote_tag,
         call_id,
         cseq,
@@ -174,6 +195,7 @@ pub fn build_attended_refer(
 }
 
 /// Build a re-INVITE to put a call on hold (sendonly/inactive)
+#[allow(clippy::too_many_arguments)]
 pub fn build_hold(
     username: &str,
     domain: &str,
@@ -186,6 +208,7 @@ pub fn build_hold(
     cseq: u32,
     branch: &str,
     rtp_port: u16,
+    route_headers: &str,
     settings: &SipSettings,
     resume: bool,
     codec: &str,
@@ -203,6 +226,7 @@ pub fn build_hold(
         cseq,
         branch,
         rtp_port,
+        route_headers,
         settings,
         resume,
         codec,
@@ -212,6 +236,7 @@ pub fn build_hold(
 }
 
 /// Build a re-INVITE with MD5 Digest authentication (for 401/407 challenges).
+#[allow(clippy::too_many_arguments)]
 pub fn build_hold_with_auth(
     username: &str,
     password: &str,
@@ -225,14 +250,20 @@ pub fn build_hold_with_auth(
     cseq: u32,
     branch: &str,
     rtp_port: u16,
+    route_headers: &str,
     settings: &SipSettings,
     resume: bool,
     codec: &str,
     via_transport: &str,
     challenge: &crate::sip::utils::AuthChallenge,
 ) -> String {
+    let clean_target = crate::sip::utils::clean_uri(remote_uri);
     let auth_header = crate::sip::auth::build_authorization_header(
-        username, password, challenge, "INVITE", remote_uri,
+        username,
+        password,
+        challenge,
+        "INVITE",
+        clean_target,
     );
     build_hold_inner(
         username,
@@ -246,6 +277,7 @@ pub fn build_hold_with_auth(
         cseq,
         branch,
         rtp_port,
+        route_headers,
         settings,
         resume,
         codec,
@@ -267,12 +299,14 @@ fn build_hold_inner(
     cseq: u32,
     branch: &str,
     rtp_port: u16,
+    route_headers: &str,
     settings: &SipSettings,
     resume: bool,
     codec: &str,
     via_transport: &str,
     auth_header: Option<&str>,
 ) -> String {
+    let clean_target = crate::sip::utils::clean_uri(remote_uri);
     let from = settings.format_from(username, domain);
     let direction = if resume { "sendrecv" } else { "sendonly" };
     let scheme = if via_transport.to_uppercase() == "TLS" {
@@ -311,6 +345,7 @@ fn build_hold_inner(
         "INVITE {} SIP/2.0\r\n\
          Via: SIP/2.0/{} {};branch={};rport\r\n\
          Max-Forwards: 70\r\n\
+         {}\
          From: {};tag={}\r\n\
          To: <{}>;tag={}\r\n\
          Call-ID: {}\r\n\
@@ -320,13 +355,14 @@ fn build_hold_inner(
          Content-Length: {}\r\n\
          \r\n\
          {}",
-        remote_uri,
+        clean_target,
         via_transport.to_uppercase(),
         local_addr,
         branch,
+        route_headers,
         from,
         local_tag,
-        remote_uri,
+        clean_target,
         remote_tag,
         call_id,
         cseq,
@@ -360,6 +396,7 @@ mod tests {
             "callid-bob",
             3,
             "branch-1",
+            "",
             &settings,
             "udp",
         );

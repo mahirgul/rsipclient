@@ -47,7 +47,21 @@ pub(crate) fn extract_sip_message(buf: &mut Vec<u8>) -> Option<Vec<u8>> {
         }
     }
 
-    let header_end = find_subsequence(buf, b"\r\n\r\n")? + 4;
+    let header_end = match (
+        find_subsequence(buf, b"\r\n\r\n"),
+        find_subsequence(buf, b"\n\n"),
+    ) {
+        (Some(crlf_pos), Some(lf_pos)) => {
+            if crlf_pos <= lf_pos {
+                crlf_pos + 4
+            } else {
+                lf_pos + 2
+            }
+        }
+        (Some(crlf_pos), None) => crlf_pos + 4,
+        (None, Some(lf_pos)) => lf_pos + 2,
+        (None, None) => return None,
+    };
 
     let headers = std::str::from_utf8(&buf[..header_end]).ok()?;
     let content_length = parse_content_length(headers).unwrap_or(0);
@@ -165,5 +179,41 @@ impl Transport {
             Transport::Tcp(_) => "TCP",
             Transport::Tls(_) => "TLS",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_sip_message_crlf() {
+        let raw = b"SIP/2.0 200 OK\r\nContent-Length: 5\r\n\r\nHELLO";
+        let mut buf = raw.to_vec();
+        let extracted = extract_sip_message(&mut buf).expect("should extract message");
+        assert_eq!(extracted, raw.to_vec());
+        assert!(buf.is_empty());
+    }
+
+    #[test]
+    fn test_extract_sip_message_lf_tolerant() {
+        let raw = b"SIP/2.0 200 OK\nContent-Length: 5\n\nHELLO";
+        let mut buf = raw.to_vec();
+        let extracted = extract_sip_message(&mut buf).expect("should extract message with LF LF");
+        assert_eq!(extracted, raw.to_vec());
+        assert!(buf.is_empty());
+    }
+
+    #[test]
+    fn test_extract_sip_message_discards_leading_keepalive() {
+        let raw = b"\r\n\r\nSIP/2.0 200 OK\r\nContent-Length: 0\r\n\r\n";
+        let mut buf = raw.to_vec();
+        let extracted =
+            extract_sip_message(&mut buf).expect("should discard keepalive and extract");
+        assert_eq!(
+            std::str::from_utf8(&extracted).unwrap(),
+            "SIP/2.0 200 OK\r\nContent-Length: 0\r\n\r\n"
+        );
+        assert!(buf.is_empty());
     }
 }

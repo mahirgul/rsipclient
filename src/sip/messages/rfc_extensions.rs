@@ -21,6 +21,7 @@ pub fn build_prack(
     settings: &SipSettings,
     via_transport: &str,
 ) -> String {
+    let clean_target = crate::sip::utils::clean_uri(target_uri);
     let from = settings.format_from(username, domain);
 
     format!(
@@ -34,13 +35,13 @@ pub fn build_prack(
          RAck: {} {} INVITE\r\n\
          Content-Length: 0\r\n\
          \r\n",
-        target_uri,
+        clean_target,
         via_transport.to_uppercase(),
         local_addr,
         branch,
         from,
         local_tag,
-        target_uri,
+        clean_target,
         remote_tag,
         call_id,
         cseq,
@@ -63,6 +64,7 @@ pub fn build_message(
     settings: &SipSettings,
     via_transport: &str,
 ) -> String {
+    let clean_target = crate::sip::utils::clean_uri(target_uri);
     let from = settings.format_from(username, domain);
     let body_len = text_body.len();
 
@@ -78,13 +80,13 @@ pub fn build_message(
          Content-Length: {}\r\n\
          \r\n\
          {}",
-        target_uri,
+        clean_target,
         via_transport.to_uppercase(),
         local_addr,
         branch,
         from,
         local_tag,
-        target_uri,
+        clean_target,
         call_id,
         cseq,
         body_len,
@@ -103,11 +105,13 @@ pub fn build_info_dtmf(
     call_id: &str,
     cseq: u32,
     branch: &str,
+    route_headers: &str,
     digit: char,
     duration_ms: u32,
     settings: &SipSettings,
     via_transport: &str,
 ) -> String {
+    let clean_target = crate::sip::utils::clean_uri(target_uri);
     let from = settings.format_from(username, domain);
     let body = format!("Signal={}\r\nDuration={}\r\n", digit, duration_ms);
     let body_len = body.len();
@@ -116,6 +120,7 @@ pub fn build_info_dtmf(
         "INFO {} SIP/2.0\r\n\
          Via: SIP/2.0/{} {};branch={};rport\r\n\
          Max-Forwards: 70\r\n\
+         {}\
          From: {};tag={}\r\n\
          To: <{}>;tag={}\r\n\
          Call-ID: {}\r\n\
@@ -124,13 +129,14 @@ pub fn build_info_dtmf(
          Content-Length: {}\r\n\
          \r\n\
          {}",
-        target_uri,
+        clean_target,
         via_transport.to_uppercase(),
         local_addr,
         branch,
+        route_headers,
         from,
         local_tag,
-        target_uri,
+        clean_target,
         remote_tag,
         call_id,
         cseq,
@@ -155,6 +161,7 @@ pub fn build_subscribe(
     settings: &SipSettings,
     via_transport: &str,
 ) -> String {
+    let clean_target = crate::sip::utils::clean_uri(target_uri);
     let from = settings.format_from(username, domain);
 
     format!(
@@ -169,13 +176,13 @@ pub fn build_subscribe(
          Expires: {}\r\n\
          Content-Length: 0\r\n\
          \r\n",
-        target_uri,
+        clean_target,
         via_transport.to_uppercase(),
         local_addr,
         branch,
         from,
         local_tag,
-        target_uri,
+        clean_target,
         call_id,
         cseq,
         event_type,

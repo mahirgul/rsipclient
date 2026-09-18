@@ -42,6 +42,10 @@ pub struct SipClient {
     pub registered: Arc<Mutex<bool>>,
     pub remote_rtp_addr: Option<SocketAddr>,
     pub remote_uri: Option<String>,
+    /// Negotiated remote target URI from 200 OK Contact header (RFC 3261 §12.2.1.1)
+    pub remote_target: Option<String>,
+    /// Dialog Route Set constructed from Record-Route headers (RFC 3261 §12.1.2)
+    pub route_set: Vec<String>,
     pub rtp_receiver: Option<crate::rtp::receiver::RtpReceiver>,
     /// Actual local RTP port bound by the receiver (not the range start).
     pub rtp_port: Option<u16>,
@@ -90,6 +94,8 @@ impl SipClient {
             registered: Arc::new(Mutex::new(false)),
             remote_rtp_addr: None,
             remote_uri: None,
+            remote_target: None,
+            route_set: Vec::new(),
             rtp_receiver: None,
             rtp_port: None,
             transaction_mgr: Arc::new(crate::sip::transaction::TransactionManager::new()),
@@ -97,6 +103,23 @@ impl SipClient {
         };
         client.transport.set_peer_filter(server_addr);
         Ok(client)
+    }
+
+    /// Reset all active call/dialog state
+    pub fn clear_dialog_state(&mut self) {
+        self.in_call = false;
+        self.held = false;
+        self.call_start_time = None;
+        self.call_id = None;
+        self.invite_cseq = None;
+        self.remote_tag = None;
+        self.remote_uri = None;
+        self.remote_target = None;
+        self.route_set.clear();
+        self.remote_rtp_addr = None;
+        self.rtp_receiver = None;
+        self.rtp_port = None;
+        self.session_expires_secs = None;
     }
 
     pub(crate) async fn next_cseq(&self) -> u32 {
@@ -251,6 +274,7 @@ impl SipClient {
             .remote_uri
             .as_deref()
             .ok_or_else(|| anyhow::anyhow!("Not in an active call"))?;
+        let target_uri = self.remote_target.as_deref().unwrap_or(remote_uri);
         let remote_tag = self
             .remote_tag
             .as_deref()
@@ -261,9 +285,10 @@ impl SipClient {
             .ok_or_else(|| anyhow::anyhow!("No active Call-ID"))?;
         let branch = self.new_branch();
         let cseq = self.next_cseq().await;
+        let route_headers = utils::format_route_headers(&self.route_set);
 
         let msg = crate::sip::messages::build_info_dtmf(
-            remote_uri,
+            target_uri,
             &self.username,
             &self.domain,
             &self.local_addr_str(),
@@ -272,6 +297,7 @@ impl SipClient {
             call_id,
             cseq,
             &branch,
+            &route_headers,
             digit,
             duration_ms,
             &self.settings,

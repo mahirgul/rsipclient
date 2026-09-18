@@ -109,6 +109,16 @@ pub async fn incoming_call_watcher(
                 }
             };
 
+        // Extract Record-Route lines to mirror in 200 OK (RFC 3261 §12.1.1)
+        let record_route_lines = utils::extract_headers_raw(&msg, "Record-Route");
+        let record_route_block = if record_route_lines.is_empty() {
+            String::new()
+        } else {
+            format!("{}\r\n", record_route_lines.join("\r\n"))
+        };
+        let remote_contact_target = utils::extract_uri(&utils::extract_header(&msg, "Contact"));
+        let uas_route_set = utils::extract_record_routes(&msg);
+
         // Auto-answer: build 200 OK with SDP
         let response = {
             let c = client.lock().await;
@@ -131,6 +141,7 @@ pub async fn incoming_call_watcher(
             format!(
                 "SIP/2.0 200 OK\r\n\
                  {}\r\n\
+                 {}\
                  From: {}\r\n\
                  To: {}\r\n\
                  Call-ID: {}\r\n\
@@ -141,6 +152,7 @@ pub async fn incoming_call_watcher(
                  \r\n\
                  {}",
                 via_block,
+                record_route_block,
                 from_header_val,
                 to_formatted,
                 call_id,
@@ -265,6 +277,8 @@ pub async fn incoming_call_watcher(
             c.remote_tag = Some(from_tag.clone());
             c.remote_rtp_addr = remote_rtp;
             c.remote_uri = remote_uri;
+            c.remote_target = remote_contact_target;
+            c.route_set = uas_route_set;
             c.rtp_receiver = Some(receiver.clone());
             c.rtp_port = Some(bound_rtp_port);
             if c.settings.session_timers {
@@ -403,14 +417,7 @@ pub async fn incoming_call_watcher(
             if let Some(ref rx) = c.rtp_receiver {
                 rx.stop();
             }
-            c.in_call = false;
-            c.call_start_time = None;
-            c.call_id = None;
-            c.invite_cseq = None;
-            c.remote_tag = None;
-            c.remote_rtp_addr = None;
-            c.remote_uri = None;
-            c.rtp_receiver = None;
+            c.clear_dialog_state();
         }
     }
 }

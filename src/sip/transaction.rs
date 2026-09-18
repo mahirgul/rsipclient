@@ -636,6 +636,11 @@ fn build_options_200_ok(req: &str) -> Option<String> {
     let via_block = via_headers.join("\r\n");
     let from = utils::extract_header(req, "From");
     let to = utils::extract_header(req, "To");
+    let to_formatted = if to.contains(";tag=") {
+        to
+    } else {
+        format!("{};tag={}", to, utils::short_id("tag-"))
+    };
     let call_id = utils::extract_header(req, "Call-ID");
     let cseq = utils::extract_header(req, "CSeq");
 
@@ -646,11 +651,12 @@ fn build_options_200_ok(req: &str) -> Option<String> {
          To: {}\r\n\
          Call-ID: {}\r\n\
          CSeq: {}\r\n\
-         Allow: INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, NOTIFY, MESSAGE, INFO\r\n\
+         Allow: INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, NOTIFY, MESSAGE, INFO, PRACK\r\n\
+         Supported: replaces, timer, 100rel, outbound, path\r\n\
          Accept: application/sdp\r\n\
          Content-Length: 0\r\n\
          \r\n",
-        via_block, from, to, call_id, cseq
+        via_block, from, to_formatted, call_id, cseq
     ))
 }
 
@@ -730,6 +736,11 @@ pub fn build_prack_200_ok(req: &str) -> Option<String> {
     let via_block = via_headers.join("\r\n");
     let from = utils::extract_header(req, "From");
     let to = utils::extract_header(req, "To");
+    let to_formatted = if to.contains(";tag=") {
+        to
+    } else {
+        format!("{};tag={}", to, utils::short_id("tag-"))
+    };
     let call_id = utils::extract_header(req, "Call-ID");
     let cseq = utils::extract_header(req, "CSeq");
     let rack = utils::extract_header(req, "RAck");
@@ -749,7 +760,7 @@ pub fn build_prack_200_ok(req: &str) -> Option<String> {
          {}\
          Content-Length: 0\r\n\
          \r\n",
-        via_block, from, to, call_id, cseq, rack_header
+        via_block, from, to_formatted, call_id, cseq, rack_header
     ))
 }
 
@@ -767,17 +778,25 @@ fn build_transaction_ack(invite_req: &str, resp: &str) -> Option<String> {
         .next()?
         .to_string();
 
+    let route_headers = utils::extract_headers_raw(invite_req, "Route");
+    let route_block = if !route_headers.is_empty() {
+        format!("{}\r\n", route_headers.join("\r\n"))
+    } else {
+        String::new()
+    };
+
     Some(format!(
         "ACK {} SIP/2.0\r\n\
          Via: {}\r\n\
          Max-Forwards: 70\r\n\
+         {}\
          From: {}\r\n\
          To: {}\r\n\
          Call-ID: {}\r\n\
          CSeq: {} ACK\r\n\
          Content-Length: 0\r\n\
          \r\n",
-        ruri, via, from, to, call_id, cseq_num
+        ruri, via, route_block, from, to, call_id, cseq_num
     ))
 }
 

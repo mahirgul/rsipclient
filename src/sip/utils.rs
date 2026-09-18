@@ -311,6 +311,68 @@ pub fn extract_headers_raw(msg: &str, header_name: &str) -> Vec<String> {
     res
 }
 
+/// Clean a SIP URI by trimming whitespace and enclosing angle brackets (`<` and `>`).
+pub fn clean_uri(uri: &str) -> &str {
+    uri.trim().trim_start_matches('<').trim_end_matches('>')
+}
+
+/// Safely splits comma-separated header parameters, taking care not to split inside quotes or angle brackets.
+pub fn split_header_values(val: &str) -> Vec<String> {
+    let mut results = Vec::new();
+    let mut in_quotes = false;
+    let mut in_angles = false;
+    let mut start = 0;
+    let bytes = val.as_bytes();
+
+    for (i, &b) in bytes.iter().enumerate() {
+        match b {
+            b'"' => in_quotes = !in_quotes,
+            b'<' if !in_quotes => in_angles = true,
+            b'>' if !in_quotes => in_angles = false,
+            b',' if !in_quotes && !in_angles => {
+                let item = val[start..i].trim();
+                if !item.is_empty() {
+                    results.push(item.to_string());
+                }
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    if start < val.len() {
+        let item = val[start..].trim();
+        if !item.is_empty() {
+            results.push(item.to_string());
+        }
+    }
+    results
+}
+
+/// Extract all Record-Route header values from a message in order of appearance.
+pub fn extract_record_routes(msg: &str) -> Vec<String> {
+    let mut routes = Vec::new();
+    for line in msg.lines() {
+        if let Some(prefix_len) = match_header_prefix(line, "Record-Route") {
+            let val = line[prefix_len..].trim();
+            for part in split_header_values(val) {
+                if !part.is_empty() {
+                    routes.push(part);
+                }
+            }
+        }
+    }
+    routes
+}
+
+/// Format a Route header block for an in-dialog request (RFC 3261 §12.2.1.1).
+pub fn format_route_headers(route_set: &[String]) -> String {
+    if route_set.is_empty() {
+        String::new()
+    } else {
+        format!("Route: {}\r\n", route_set.join(", "))
+    }
+}
+
 /// Reject values that would break out of the SIP request line or a header.
 ///
 /// Request URIs and header values are interpolated into the message as-is, so a
@@ -669,5 +731,39 @@ mod tests {
         let msg_prack = "PRACK sip:bob@example.com SIP/2.0\r\nRAck: 1001 1 INVITE\r\n\r\n";
         let rack = parse_rack(msg_prack).expect("valid rack");
         assert_eq!(rack, (1001, 1, "INVITE".to_string()));
+    }
+
+    #[test]
+    fn test_clean_uri() {
+        assert_eq!(
+            clean_uri("<sip:alice@example.com>"),
+            "sip:alice@example.com"
+        );
+        assert_eq!(clean_uri("sip:alice@example.com"), "sip:alice@example.com");
+        assert_eq!(
+            clean_uri("  <sips:bob@secure.org>  "),
+            "sips:bob@secure.org"
+        );
+    }
+
+    #[test]
+    fn test_extract_record_routes_and_format() {
+        let msg = "SIP/2.0 200 OK\r\n\
+                   Record-Route: <sip:proxy1.com;lr>, <sip:proxy2.com;lr>\r\n\
+                   Record-Route: <sip:proxy3.com;lr>\r\n\
+                   Contact: <sip:callee@10.0.0.5:5060>\r\n\r\n";
+        let routes = extract_record_routes(msg);
+        assert_eq!(routes.len(), 3);
+        assert_eq!(routes[0], "<sip:proxy1.com;lr>");
+        assert_eq!(routes[1], "<sip:proxy2.com;lr>");
+        assert_eq!(routes[2], "<sip:proxy3.com;lr>");
+
+        let mut uac_route_set = routes.clone();
+        uac_route_set.reverse();
+        let formatted = format_route_headers(&uac_route_set);
+        assert_eq!(
+            formatted,
+            "Route: <sip:proxy3.com;lr>, <sip:proxy2.com;lr>, <sip:proxy1.com;lr>\r\n"
+        );
     }
 }

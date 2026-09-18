@@ -135,10 +135,13 @@ impl SipSettings {
         if self.session_timers {
             h.push_str("Session-Expires: 1800;refresher=uac\r\n");
         }
+        h.push_str(
+            "Allow: INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, NOTIFY, MESSAGE, INFO, PRACK\r\n",
+        );
         if self.early_media {
-            h.push_str("Supported: 100rel, timer, outbound, path\r\n");
+            h.push_str("Supported: 100rel, timer, outbound, path, replaces\r\n");
         } else {
-            h.push_str("Supported: timer, outbound, path\r\n");
+            h.push_str("Supported: timer, outbound, path, replaces\r\n");
         }
 
         h

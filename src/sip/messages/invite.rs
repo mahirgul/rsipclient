@@ -19,6 +19,7 @@ pub fn build_invite(
     settings: &SipSettings,
     via_transport: &str,
 ) -> String {
+    let clean_target = crate::sip::utils::clean_uri(target_uri);
     let sdp_len = sdp.len();
     let from = settings.format_from(username, domain);
     let extra = settings.extra_headers();
@@ -41,13 +42,13 @@ pub fn build_invite(
          Content-Length: {}\r\n\
          \r\n\
          {}",
-        target_uri,
+        clean_target,
         via_transport.to_uppercase(),
         local_addr,
         branch,
         from,
         local_tag,
-        target_uri,
+        clean_target,
         call_id,
         cseq,
         scheme,
@@ -75,7 +76,8 @@ pub fn build_invite_with_auth(
     settings: &SipSettings,
     via_transport: &str,
 ) -> String {
-    let uri = target_uri.to_string();
+    let clean_target = crate::sip::utils::clean_uri(target_uri);
+    let uri = clean_target.to_string();
     let auth_header =
         auth::build_authorization_header(username, password, challenge, "INVITE", &uri);
     let sdp_len = sdp.len();
@@ -101,13 +103,13 @@ pub fn build_invite_with_auth(
          Content-Length: {}\r\n\
          \r\n\
          {}",
-        target_uri,
+        clean_target,
         via_transport.to_uppercase(),
         local_addr,
         branch,
         from,
         local_tag,
-        target_uri,
+        clean_target,
         call_id,
         cseq,
         scheme,
@@ -120,7 +122,7 @@ pub fn build_invite_with_auth(
     )
 }
 
-/// Build ACK request
+/// Build ACK request (RFC 3261 §17.1.1.3 & §13.2.2.4)
 pub fn build_ack(
     target_uri: &str,
     username: &str,
@@ -131,35 +133,39 @@ pub fn build_ack(
     call_id: &str,
     cseq: u32,
     branch: &str,
+    route_headers: &str,
     settings: &SipSettings,
     via_transport: &str,
 ) -> String {
     let from = settings.format_from(username, domain);
+    let clean_target = crate::sip::utils::clean_uri(target_uri);
 
     format!(
         "ACK {} SIP/2.0\r\n\
          Via: SIP/2.0/{} {};branch={};rport\r\n\
          Max-Forwards: 70\r\n\
+         {}\
          From: {};tag={}\r\n\
          To: <{}>;tag={}\r\n\
          Call-ID: {}\r\n\
          CSeq: {} ACK\r\n\
          Content-Length: 0\r\n\
          \r\n",
-        target_uri,
+        clean_target,
         via_transport.to_uppercase(),
         local_addr,
         branch,
+        route_headers,
         from,
         local_tag,
-        target_uri,
+        clean_target,
         remote_tag,
         call_id,
         cseq
     )
 }
 
-/// Build BYE request
+/// Build BYE request (RFC 3261 §15.1.1)
 pub fn build_bye(
     username: &str,
     domain: &str,
@@ -170,35 +176,39 @@ pub fn build_bye(
     call_id: &str,
     cseq: u32,
     branch: &str,
+    route_headers: &str,
     settings: &SipSettings,
     via_transport: &str,
 ) -> String {
     let from = settings.format_from(username, domain);
+    let clean_target = crate::sip::utils::clean_uri(remote_uri);
 
     format!(
         "BYE {} SIP/2.0\r\n\
          Via: SIP/2.0/{} {};branch={};rport\r\n\
          Max-Forwards: 70\r\n\
+         {}\
          From: {};tag={}\r\n\
          To: <{}>;tag={}\r\n\
          Call-ID: {}\r\n\
          CSeq: {} BYE\r\n\
          Content-Length: 0\r\n\
          \r\n",
-        remote_uri,
+        clean_target,
         via_transport.to_uppercase(),
         local_addr,
         branch,
+        route_headers,
         from,
         local_tag,
-        remote_uri,
+        clean_target,
         remote_tag,
         call_id,
         cseq
     )
 }
 
-/// Build CANCEL request with optional Reason header (RFC 3326)
+/// Build CANCEL request with optional Reason header (RFC 3326 & RFC 3261 §9.1)
 pub fn build_cancel(
     username: &str,
     domain: &str,
@@ -208,15 +218,18 @@ pub fn build_cancel(
     call_id: &str,
     cseq: u32,
     branch: &str,
+    route_headers: &str,
     settings: &SipSettings,
     via_transport: &str,
 ) -> String {
     let from = settings.format_from(username, domain);
+    let clean_target = crate::sip::utils::clean_uri(remote_uri);
 
     format!(
         "CANCEL {} SIP/2.0\r\n\
          Via: SIP/2.0/{} {};branch={};rport\r\n\
          Max-Forwards: 70\r\n\
+         {}\
          From: {};tag={}\r\n\
          To: <{}>\r\n\
          Call-ID: {}\r\n\
@@ -224,13 +237,14 @@ pub fn build_cancel(
          Reason: Q.850;cause=16;text=\"Normal call clearing\"\r\n\
          Content-Length: 0\r\n\
          \r\n",
-        remote_uri,
+        clean_target,
         via_transport.to_uppercase(),
         local_addr,
         branch,
+        route_headers,
         from,
         local_tag,
-        remote_uri,
+        clean_target,
         call_id,
         cseq
     )

@@ -49,6 +49,12 @@ impl SipClient {
         let call_id = self.call_id.clone().context("No call_id")?;
         let remote_tag = self.remote_tag.clone().context("No remote_tag")?;
         let remote_uri = self.remote_uri.clone().context("No remote_uri")?;
+        let target_uri = self
+            .remote_target
+            .as_deref()
+            .unwrap_or(&remote_uri)
+            .to_string();
+        let route_headers = utils::format_route_headers(&self.route_set);
         let local = self.local_addr_str();
         let local_ip = self.local_addr.ip().to_string();
         let rtp_port = self.rtp_port.unwrap_or(self.rtp_port_start);
@@ -57,7 +63,7 @@ impl SipClient {
         let msg = crate::sip::transfer::build_hold(
             &self.username,
             &self.domain,
-            &remote_uri,
+            &target_uri,
             &local_ip,
             &local,
             &self.local_tag,
@@ -66,6 +72,7 @@ impl SipClient {
             cseq,
             &self.new_branch(),
             rtp_port,
+            &route_headers,
             &self.settings,
             resume,
             &self.codec,
@@ -74,6 +81,7 @@ impl SipClient {
 
         let resp = self.send(&msg).await?;
         let mut status = utils::parse_status_code(&resp)?;
+        let mut resp_opt = None;
 
         // Handle 401/407 auth challenge on the re-INVITE.
         if (status == 401 || status == 407) && self.auth_method == crate::sip::AuthMethod::Md5 {
@@ -84,7 +92,7 @@ impl SipClient {
                 &self.username,
                 &self.password,
                 &self.domain,
-                &remote_uri,
+                &target_uri,
                 &local_ip,
                 &local,
                 &self.local_tag,
@@ -93,6 +101,7 @@ impl SipClient {
                 cseq,
                 &self.new_branch(),
                 rtp_port,
+                &route_headers,
                 &self.settings,
                 resume,
                 &self.codec,
@@ -112,7 +121,7 @@ impl SipClient {
                     &self.username,
                     &self.password,
                     &self.domain,
-                    &remote_uri,
+                    &target_uri,
                     &local_ip,
                     &local,
                     &self.local_tag,
@@ -121,6 +130,7 @@ impl SipClient {
                     cseq,
                     &self.new_branch(),
                     rtp_port,
+                    &route_headers,
                     &self.settings,
                     resume,
                     &self.codec,
@@ -130,10 +140,21 @@ impl SipClient {
                 resp2 = self.send(&retry_msg).await?;
                 status = utils::parse_status_code(&resp2)?;
             }
+            resp_opt = Some(resp2);
         }
 
+        let final_resp = resp_opt.as_ref().unwrap_or(&resp);
+
         if status == 200 {
+            if let Some(target) = utils::extract_uri(&utils::extract_header(final_resp, "Contact"))
+            {
+                self.remote_target = Some(target);
+            }
             self.held = !resume;
+            // Send ACK per RFC 3261 §14.1 for 2xx response to re-INVITE
+            if let Err(e) = self.send_ack(&target_uri, &local, &call_id, cseq).await {
+                log::warn!("Failed to send ACK for re-INVITE: {}", e);
+            }
             Ok(true)
         } else {
             Ok(false)
@@ -151,7 +172,9 @@ impl SipClient {
         let call_id = self.call_id.as_ref().context("No call_id")?;
         let remote_tag = self.remote_tag.as_ref().context("No remote_tag")?;
         let remote_uri = self.remote_uri.as_ref().context("No remote_uri")?;
+        let target_peer_uri = self.remote_target.as_deref().unwrap_or(remote_uri);
         let local = self.local_addr_str();
+        let route_headers = utils::format_route_headers(&self.route_set);
 
         let formatted_uri = if target_uri.starts_with("sip:") || target_uri.starts_with("sips:") {
             target_uri.to_string()
@@ -165,7 +188,7 @@ impl SipClient {
         let msg = crate::sip::transfer::build_refer(
             &self.username,
             &self.domain,
-            remote_uri,
+            target_peer_uri,
             target_uri,
             &local,
             &self.local_tag,
@@ -173,6 +196,7 @@ impl SipClient {
             call_id,
             self.next_cseq().await,
             &self.new_branch(),
+            &route_headers,
             &self.settings,
             self.transport.via_str(),
         );
@@ -189,7 +213,7 @@ impl SipClient {
                 &self.username,
                 &self.password,
                 &self.domain,
-                remote_uri,
+                target_peer_uri,
                 target_uri,
                 &local,
                 &self.local_tag,
@@ -197,6 +221,7 @@ impl SipClient {
                 call_id,
                 auth_cseq,
                 &self.new_branch(),
+                &route_headers,
                 &challenge,
                 &self.settings,
                 self.transport.via_str(),
@@ -214,7 +239,7 @@ impl SipClient {
                     &self.username,
                     &self.password,
                     &self.domain,
-                    remote_uri,
+                    target_peer_uri,
                     target_uri,
                     &local,
                     &self.local_tag,
@@ -222,6 +247,7 @@ impl SipClient {
                     call_id,
                     auth_cseq,
                     &self.new_branch(),
+                    &route_headers,
                     &fresh,
                     &self.settings,
                     self.transport.via_str(),
