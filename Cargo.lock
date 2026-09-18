@@ -1482,7 +1482,7 @@ dependencies = [
 
 [[package]]
 name = "rsipclient"
-version = "2.6.1"
+version = "2.6.2"
 dependencies = [
  "anyhow",
  "axum",
