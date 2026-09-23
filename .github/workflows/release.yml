@@ -116,6 +116,9 @@ jobs:
     needs: [publish-release]
     if: github.ref_type == 'tag' && (!contains(github.ref_name, '-'))
     steps:
+      - name: Wait for release assets propagation
+        run: sleep 30
+
       - name: Submit package to WinGet
         uses: vedantmgoyal2009/winget-releaser@v2
         with:
