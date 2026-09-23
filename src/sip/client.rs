@@ -55,6 +55,18 @@ pub struct SipClient {
     /// dialog, taken from the peer's Session-Expires header. `None` when
     /// session timers aren't in use or nothing was negotiated yet.
     pub session_expires_secs: Option<u32>,
+    /// Active call direction ("in" or "out")
+    pub call_direction: Option<String>,
+    /// Whether an incoming call is currently ringing
+    pub ringing: bool,
+    /// Remote caller URI of a currently ringing call
+    pub ringing_from: Option<String>,
+    /// Call-ID of currently ringing call
+    pub ringing_call_id: Option<String>,
+    /// CSeq of currently ringing call
+    pub ringing_cseq: Option<u32>,
+    /// Raw INVITE message of currently ringing call (for manual answer/reject)
+    pub ringing_invite_msg: Option<String>,
 }
 
 impl SipClient {
@@ -100,6 +112,12 @@ impl SipClient {
             rtp_port: None,
             transaction_mgr: Arc::new(crate::sip::transaction::TransactionManager::new()),
             session_expires_secs: None,
+            call_direction: None,
+            ringing: false,
+            ringing_from: None,
+            ringing_call_id: None,
+            ringing_cseq: None,
+            ringing_invite_msg: None,
         };
         client.transport.set_peer_filter(server_addr);
         Ok(client)
@@ -120,6 +138,12 @@ impl SipClient {
         self.rtp_receiver = None;
         self.rtp_port = None;
         self.session_expires_secs = None;
+        self.call_direction = None;
+        self.ringing = false;
+        self.ringing_from = None;
+        self.ringing_call_id = None;
+        self.ringing_cseq = None;
+        self.ringing_invite_msg = None;
     }
 
     pub(crate) async fn next_cseq(&self) -> u32 {
@@ -185,6 +209,7 @@ impl SipClient {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) async fn recv_extra(&self, timeout_ms: u64) -> Result<String> {
         let (buf, _src) = self
             .transport

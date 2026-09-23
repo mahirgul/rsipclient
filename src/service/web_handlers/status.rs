@@ -53,6 +53,15 @@ pub async fn get_status(
         let audio_input_device = mc.account.audio_input_device.clone();
         let audio_output_device = mc.account.audio_output_device.clone();
 
+        let remote_uri = client_lock.remote_uri.clone();
+        let direction = client_lock.call_direction.clone();
+        let ringing = client_lock.ringing;
+        let ringing_from = client_lock.ringing_from.clone();
+        let call_duration_secs = client_lock
+            .call_start_time
+            .map(|t| t.elapsed().as_secs())
+            .unwrap_or(0);
+
         accounts.push(AccountStatus {
             name: name.clone(),
             username: client_lock.username.clone(),
@@ -63,6 +72,11 @@ pub async fn get_status(
             in_call: is_in_call,
             held: is_held,
             call_id: client_lock.call_id.clone(),
+            remote_uri,
+            direction,
+            ringing,
+            ringing_from,
+            call_duration_secs,
             codec: codec_str,
             codec_rate,
             audio_input_device,

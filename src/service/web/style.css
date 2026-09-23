@@ -17,16 +17,28 @@
     --header-border: #008fd0;
     --table-header-bg: #373e4a;
     --table-row-hover: rgba(0, 143, 208, 0.08);
-    --input-bg: rgba(13, 17, 23, 0.6);
+    --input-bg: rgba(13, 17, 23, 0.7);
     --modal-overlay: rgba(0, 0, 0, 0.75);
+    --console-bg: #070a10;
+    --console-color: #e2e8f0;
+    --border-subtle: rgba(255, 255, 255, 0.08);
+    --panel-subtle: rgba(10, 12, 18, 0.6);
+    --trace-item-bg: rgba(255, 255, 255, 0.02);
+    --trace-arrow-bg: #0f1322;
+    --footer-bg: rgba(10, 12, 18, 0.4);
+    --badge-neutral-bg: rgba(255, 255, 255, 0.08);
+    --badge-neutral-color: #f0f3f4;
+    --btn-hover-bg: rgba(255, 255, 255, 0.08);
+    --toast-bg: rgba(17, 24, 39, 0.95);
+    --toast-color: #f0f3f4;
 }
 
 [data-theme="light"] {
     --bg-color: #f0f3f4;
     --card-bg: #ffffff;
     --card-border: rgba(0, 142, 207, 0.25);
-    --text-primary: #373e4a;
-    --text-secondary: #444444;
+    --text-primary: #1e293b;
+    --text-secondary: #64748b;
     --accent-primary: #008fd0;
     --accent-hover: #008ecf;
     --accent-brand-dark: #373e4a;
@@ -40,6 +52,18 @@
     --table-row-hover: rgba(0, 143, 208, 0.05);
     --input-bg: #ffffff;
     --modal-overlay: rgba(55, 62, 74, 0.5);
+    --console-bg: #f8fafc;
+    --console-color: #0f172a;
+    --border-subtle: rgba(0, 0, 0, 0.08);
+    --panel-subtle: #f8fafc;
+    --trace-item-bg: #f8fafc;
+    --trace-arrow-bg: #ffffff;
+    --footer-bg: rgba(255, 255, 255, 0.85);
+    --badge-neutral-bg: rgba(0, 0, 0, 0.06);
+    --badge-neutral-color: #334155;
+    --btn-hover-bg: rgba(0, 0, 0, 0.05);
+    --toast-bg: rgba(255, 255, 255, 0.96);
+    --toast-color: #0f172a;
 }
 
 * {
@@ -122,7 +146,7 @@ body {
     margin-bottom: 0.5rem;
 }
 
-.form-control {
+.form-control, .form-input, select.form-control, textarea.form-control {
     width: 100%;
     background: var(--input-bg);
     border: 1px solid var(--card-border);
@@ -134,7 +158,17 @@ body {
     transition: all 0.2s ease;
 }
 
-.form-control:focus {
+select {
+    background-color: var(--input-bg);
+    color: var(--text-primary);
+}
+
+select option {
+    background-color: var(--card-bg);
+    color: var(--text-primary);
+}
+
+.form-control:focus, .form-input:focus {
     outline: none;
     border-color: var(--accent-primary);
     box-shadow: 0 0 0 3px var(--glow-color);
@@ -285,7 +319,7 @@ header {
 .uptime-badge {
     font-size: 0.8rem;
     color: var(--text-secondary);
-    background: rgba(31, 41, 55, 0.6);
+    background: var(--badge-neutral-bg);
     padding: 0.4rem 0.8rem;
     border-radius: 6px;
     border: 1px solid var(--card-border);
@@ -379,7 +413,7 @@ header {
     justify-content: space-between;
     align-items: center;
     padding-bottom: 0.75rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid var(--border-subtle);
 }
 
 .diag-item:last-child {
@@ -420,7 +454,7 @@ th {
 td {
     padding: 1rem;
     font-size: 0.9rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid var(--border-subtle);
     vertical-align: middle;
 }
 
@@ -476,7 +510,7 @@ tr:last-child td {
 }
 
 .action-btn:hover {
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--btn-hover-bg);
     border-color: var(--text-secondary);
 }
 
@@ -490,7 +524,8 @@ tr:last-child td {
 
 /* Console Logs */
 .console-box {
-    background: #05070c;
+    background: var(--console-bg);
+    color: var(--console-color);
     border: 1px solid var(--card-border);
     border-radius: 8px;
     padding: 1rem;
@@ -616,25 +651,25 @@ tr:last-child td {
 
 .notification {
     pointer-events: auto;
-    background: rgba(17, 24, 39, 0.85);
+    background: var(--toast-bg);
     backdrop-filter: blur(16px) saturate(180%);
     -webkit-backdrop-filter: blur(16px) saturate(180%);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--card-border);
     border-left: 4px solid var(--accent-primary);
     border-radius: 8px;
     padding: 1rem 1.25rem;
     display: flex;
     align-items: flex-start;
     gap: 0.85rem;
-    color: var(--text-primary);
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 16px -8px rgba(0, 0, 0, 0.5);
+    color: var(--toast-color);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 16px -8px rgba(0, 0, 0, 0.2);
     transform: translateX(120%);
     transition: 
         transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), 
         opacity 0.4s ease, 
         height 0.35s cubic-bezier(0.16, 1, 0.3, 1), 
         padding 0.35s cubic-bezier(0.16, 1, 0.3, 1), 
-        margin 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+        margin 0.35s cubic-bezier(0.16, 1, 0.3, 1), 
         border-width 0.35s cubic-bezier(0.16, 1, 0.3, 1);
     opacity: 0;
     position: relative;
@@ -649,22 +684,22 @@ tr:last-child td {
 
 .notification.success {
     border-left-color: var(--accent-success);
-    background: linear-gradient(to right, rgba(16, 185, 129, 0.08), rgba(17, 24, 39, 0.85));
+    background: linear-gradient(to right, rgba(16, 185, 129, 0.12), var(--toast-bg));
 }
 
 .notification.error {
     border-left-color: var(--accent-error);
-    background: linear-gradient(to right, rgba(239, 68, 68, 0.08), rgba(17, 24, 39, 0.85));
+    background: linear-gradient(to right, rgba(239, 68, 68, 0.12), var(--toast-bg));
 }
 
 .notification.warning {
     border-left-color: var(--accent-warning);
-    background: linear-gradient(to right, rgba(245, 158, 11, 0.08), rgba(17, 24, 39, 0.85));
+    background: linear-gradient(to right, rgba(245, 158, 11, 0.12), var(--toast-bg));
 }
 
 .notification.info {
     border-left-color: var(--accent-primary);
-    background: linear-gradient(to right, rgba(59, 130, 246, 0.08), rgba(17, 24, 39, 0.85));
+    background: linear-gradient(to right, rgba(59, 130, 246, 0.12), var(--toast-bg));
 }
 
 .notification-icon {
@@ -746,8 +781,8 @@ footer.app-footer {
     margin-top: 2rem;
     font-size: 0.85rem;
     color: var(--text-secondary);
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
-    background: rgba(10, 12, 18, 0.3);
+    border-top: 1px solid var(--border-subtle);
+    background: var(--footer-bg);
     border-radius: 0 0 12px 12px;
 }
 
@@ -763,8 +798,8 @@ footer.app-footer a:hover {
 
 /* Helper styles for SIP sequence diagram */
 .trace-item {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: var(--trace-item-bg);
+    border: 1px solid var(--border-subtle);
     border-radius: 6px;
     padding: 0.55rem;
     cursor: pointer;
@@ -797,12 +832,13 @@ footer.app-footer a:hover {
     right: 0;
     top: 50%;
     height: 1px;
-    background: rgba(255, 255, 255, 0.15);
+    background: var(--border-subtle);
     z-index: 1;
 }
 .trace-arrow-text {
     position: relative;
-    background: #0f1322;
+    background: var(--trace-arrow-bg);
+    color: var(--text-secondary);
     padding: 0 0.5rem;
     z-index: 2;
     font-size: 0.75rem;
@@ -830,7 +866,7 @@ footer.app-footer a:hover {
     align-items: center;
     gap: 0.5rem;
     padding: 0.5rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid var(--border-subtle);
 }
 .ivr-menu-row:last-child {
     border-bottom: none;
@@ -841,10 +877,60 @@ footer.app-footer a:hover {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--badge-neutral-bg);
+    color: var(--badge-neutral-color);
     border-radius: 4px;
     font-weight: 600;
     font-size: 0.85rem;
+}
+
+/* Incoming Call Styles */
+.ringing-pulse-icon {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: rgba(16, 185, 129, 0.15);
+    border: 2px solid var(--accent-success);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2.2rem;
+    margin: 0 auto 1.25rem auto;
+    animation: ringingRing 1.5s infinite;
+}
+
+@keyframes ringingRing {
+    0% {
+        transform: scale(0.95);
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+    }
+    70% {
+        transform: scale(1.08);
+        box-shadow: 0 0 0 20px rgba(16, 185, 129, 0);
+    }
+    100% {
+        transform: scale(0.95);
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+    }
+}
+
+.badge-ringing {
+    background: rgba(245, 158, 11, 0.18);
+    color: var(--accent-warning);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    animation: pulse 1s infinite;
+}
+
+.badge-incoming {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--accent-success);
+    border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.badge-outgoing {
+    background: rgba(0, 143, 208, 0.15);
+    color: var(--accent-primary);
+    border: 1px solid rgba(0, 143, 208, 0.25);
 }
 
 /* Password & sensitive credential masking without browser credential detection */

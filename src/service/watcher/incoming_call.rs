@@ -1,17 +1,17 @@
-//! Background watcher for incoming SIP calls.
+//! Background watcher for incoming and in-dialog SIP calls.
 //!
-//! Listens for incoming INVITE requests, answers them automatically, and runs the IVR media session.
+//! Listens for incoming INVITE requests (auto-answering or sending 180 Ringing for Web UI prompt),
+//! handles incoming BYE requests on both inbound and outbound calls, and manages CANCEL requests.
 
 use crate::config::Account;
 use crate::ivr;
 use crate::rtp::codec::Codec;
-use crate::rtp::receiver::RtpReceiver;
-use crate::sip::{sdp, utils, SipClient};
+use crate::sip::{utils, SipClient};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-/// Background task: poll SIP socket for incoming INVITEs, auto-answer, run IVR.
+/// Background task: poll SIP socket for incoming INVITEs, in-dialog BYEs, and CANCELs.
 pub async fn incoming_call_watcher(
     account_name: String,
     client: Arc<Mutex<SipClient>>,
@@ -21,6 +21,8 @@ pub async fn incoming_call_watcher(
     active: Arc<Mutex<bool>>,
     audio_tx: tokio::sync::broadcast::Sender<Vec<i16>>,
 ) {
+    let mut ivr_task: Option<tokio::task::JoinHandle<()>> = None;
+
     loop {
         if *shutdown.lock().await || !*active.lock().await {
             break;
@@ -35,389 +37,338 @@ pub async fn incoming_call_watcher(
         let msg = match msg {
             Some(m) => m,
             None => {
-                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                 continue;
             }
         };
 
-        // Only handle INVITE
-        if !msg.starts_with("INVITE") {
+        // 1. Handle incoming BYE (remote party hung up on either an incoming or outgoing call)
+        if msg.starts_with("BYE") {
+            log::info!("[{}] Remote party hung up (received BYE)", account_name);
+            let from_header_val = utils::extract_header(&msg, "From");
+            let to_header_val = utils::extract_header(&msg, "To");
+            let call_id_val = utils::extract_header(&msg, "Call-ID");
+            let cseq_str = utils::extract_header(&msg, "CSeq");
+            let via_headers = utils::extract_headers_raw(&msg, "Via");
+            let via_block = via_headers.join("\r\n");
+
+            let cseq_num = cseq_str
+                .split_whitespace()
+                .next()
+                .and_then(|s| s.parse::<u32>().ok())
+                .unwrap_or(1);
+
+            let response = format!(
+                "SIP/2.0 200 OK\r\n\
+                 {}\r\n\
+                 From: {}\r\n\
+                 To: {}\r\n\
+                 Call-ID: {}\r\n\
+                 CSeq: {} BYE\r\n\
+                 Content-Length: 0\r\n\
+                 \r\n",
+                via_block, from_header_val, to_header_val, call_id_val, cseq_num,
+            );
+
+            {
+                let c = client.lock().await;
+                let branch = utils::extract_param(&msg, "Via", "branch");
+                let key = crate::sip::TransactionKey::new(branch, "BYE");
+                let is_reliable = c.transport.via_str() != "UDP";
+                c.transaction_mgr
+                    .record_server_response(key, response.clone(), is_reliable)
+                    .await;
+                let _ = c
+                    .transport
+                    .send_to(response.as_bytes(), c.server_addr)
+                    .await;
+            }
+
+            // Abort any active IVR task
+            if let Some(task) = ivr_task.take() {
+                task.abort();
+            }
+
+            // Clean up call state
+            {
+                let mut c = client.lock().await;
+                let duration_secs = c
+                    .call_start_time
+                    .map(|t| t.elapsed().as_secs())
+                    .unwrap_or(0);
+                let cid = c.call_id.clone().unwrap_or_else(|| call_id_val.clone());
+                crate::service::logger::record_call_end(&cid, "Completed", duration_secs);
+                if let Some(ref rx) = c.rtp_receiver {
+                    rx.stop();
+                }
+                c.clear_dialog_state();
+            }
             continue;
         }
 
-        log::info!("[{}] Incoming INVITE!", account_name);
-        log::debug!("--- INCOMING ---\n{}", msg);
+        // 2. Handle incoming CANCEL (caller cancelled call before answer)
+        if msg.starts_with("CANCEL") {
+            log::info!("[{}] Remote party sent CANCEL", account_name);
+            let from_header_val = utils::extract_header(&msg, "From");
+            let to_header_val = utils::extract_header(&msg, "To");
+            let call_id_val = utils::extract_header(&msg, "Call-ID");
+            let cseq_str = utils::extract_header(&msg, "CSeq");
+            let via_headers = utils::extract_headers_raw(&msg, "Via");
+            let via_block = via_headers.join("\r\n");
+            let cseq_num = cseq_str
+                .split_whitespace()
+                .next()
+                .and_then(|s| s.parse::<u32>().ok())
+                .unwrap_or(1);
 
-        // Extract Call-ID, From tag, To tag, Contact, and remote RTP from SDP
-        let from_tag = utils::extract_param(&msg, "From", "tag");
-        let from_header_val = utils::extract_header(&msg, "From");
-        let to_header_val = utils::extract_header(&msg, "To");
-        let remote_uri = utils::extract_uri(&from_header_val);
-        let call_id = utils::extract_header(&msg, "Call-ID");
-        crate::service::logger::record_call_start(
-            &call_id,
-            &account_name,
-            &remote_uri.clone().unwrap_or_default(),
-            "IN",
-        );
-        let cseq_str = utils::extract_header(&msg, "CSeq");
-        let cseq: u32 = cseq_str
-            .split_whitespace()
-            .next()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(1);
-        let via_headers = utils::extract_headers_raw(&msg, "Via");
-        let via_block = via_headers.join("\r\n");
-
-        // Parse remote RTP addr from SDP
-        let remote_rtp = parse_sdp_connection(&msg);
-        sdp::warn_codec_mismatch(codec, &msg);
-
-        // Find and bind a free RTP receiver in the range
-        let (rtp_port_start, rtp_port_end) = {
-            let c = client.lock().await;
-            (c.rtp_port_start, c.rtp_port_end)
-        };
-        let (receiver, bound_rtp_port) =
-            match RtpReceiver::bind_range(rtp_port_start, rtp_port_end).await {
-                Ok(r) => r,
-                Err(e) => {
-                    log::error!(
-                        "[{}] Failed to bind RTP receiver in range {}-{}: {}",
-                        account_name,
-                        rtp_port_start,
-                        rtp_port_end,
-                        e
-                    );
-                    let response = format!(
-                        "SIP/2.0 503 Service Unavailable\r\n\
-                         {}\r\n\
-                         From: {}\r\n\
-                         To: {}\r\n\
-                         Call-ID: {}\r\n\
-                         CSeq: {} INVITE\r\n\
-                         Content-Length: 0\r\n\
-                         \r\n",
-                        via_block, from_header_val, to_header_val, call_id, cseq,
-                    );
-                    let c = client.lock().await;
-                    let _ = c
-                        .transport
-                        .send_to(response.as_bytes(), c.server_addr)
-                        .await;
-                    continue;
-                }
-            };
-
-        // Extract Record-Route lines to mirror in 200 OK (RFC 3261 §12.1.1)
-        let record_route_lines = utils::extract_headers_raw(&msg, "Record-Route");
-        let record_route_block = if record_route_lines.is_empty() {
-            String::new()
-        } else {
-            format!("{}\r\n", record_route_lines.join("\r\n"))
-        };
-        let remote_contact_target = utils::extract_uri(&utils::extract_header(&msg, "Contact"));
-        let uas_route_set = utils::extract_record_routes(&msg);
-
-        // Auto-answer: build 200 OK with SDP
-        let response = {
-            let c = client.lock().await;
-            let local_ip = c.local_addr.ip().to_string();
-            let sdp_body = sdp::build_sdp_single(&c.username, &local_ip, bound_rtp_port, codec);
-            let sdp_len = sdp_body.len();
-            let via_transport = c.transport.via_str();
-            let scheme = if via_transport.to_uppercase() == "TLS" {
-                "sips"
-            } else {
-                "sip"
-            };
-
-            let to_formatted = if to_header_val.contains(";tag=") {
-                to_header_val.clone()
-            } else {
-                format!("{};tag={}", to_header_val, c.local_tag)
-            };
-
-            format!(
+            let cancel_response = format!(
                 "SIP/2.0 200 OK\r\n\
                  {}\r\n\
-                 {}\
+                 From: {}\r\n\
+                 To: {}\r\n\
+                 Call-ID: {}\r\n\
+                 CSeq: {} CANCEL\r\n\
+                 Content-Length: 0\r\n\
+                 \r\n",
+                via_block, from_header_val, to_header_val, call_id_val, cseq_num,
+            );
+            {
+                let c = client.lock().await;
+                let branch = utils::extract_param(&msg, "Via", "branch");
+                let key = crate::sip::TransactionKey::new(branch, "CANCEL");
+                let is_reliable = c.transport.via_str() != "UDP";
+                c.transaction_mgr
+                    .record_server_response(key, cancel_response.clone(), is_reliable)
+                    .await;
+                let _ = c
+                    .transport
+                    .send_to(cancel_response.as_bytes(), c.server_addr)
+                    .await;
+            }
+
+            // Send 487 Request Terminated for the original INVITE (RFC 3261 §9.2)
+            let (to_tag, invite_cseq) = {
+                let mut c = client.lock().await;
+                let tag = c.local_tag.clone();
+                let cseq = c.ringing_cseq.unwrap_or(1);
+                c.ringing = false;
+                c.ringing_from = None;
+                c.ringing_call_id = None;
+                c.ringing_cseq = None;
+                c.ringing_invite_msg = None;
+                (tag, cseq)
+            };
+
+            let to_487 = if to_header_val.contains(";tag=") {
+                to_header_val
+            } else {
+                format!("{};tag={}", to_header_val, to_tag)
+            };
+
+            let resp_487 = format!(
+                "SIP/2.0 487 Request Terminated\r\n\
+                 {}\r\n\
                  From: {}\r\n\
                  To: {}\r\n\
                  Call-ID: {}\r\n\
                  CSeq: {} INVITE\r\n\
-                 Contact: <{}:{}@{}>\r\n\
-                 Content-Type: application/sdp\r\n\
-                 Content-Length: {}\r\n\
-                 \r\n\
-                 {}",
-                via_block,
-                record_route_block,
-                from_header_val,
-                to_formatted,
-                call_id,
-                cseq,
-                scheme,
-                c.username,
-                c.local_addr_str(),
-                sdp_len,
-                sdp_body,
-            )
-        };
-
-        // Send 200 OK
-        {
-            let c = client.lock().await;
-            log::debug!("--- SEND 200 OK ---\n{}", response);
-            let branch = utils::extract_param(&msg, "Via", "branch");
-            let key = crate::sip::TransactionKey::new(branch, "INVITE");
-            let is_reliable = c.transport.via_str() != "UDP";
-            c.transaction_mgr
-                .record_server_response(key, response.clone(), is_reliable)
-                .await;
-            let _ = c
-                .transport
-                .send_to(response.as_bytes(), c.server_addr)
-                .await;
-        }
-
-        // Wait for ACK, handling a CANCEL or retransmitted INVITE that races our 200 OK.
-        let mut ack_received = false;
-        let mut cancelled = false;
-        for _ in 0..5 {
-            let pending = {
+                 Content-Length: 0\r\n\
+                 \r\n",
+                via_block, from_header_val, to_487, call_id_val, invite_cseq
+            );
+            {
                 let c = client.lock().await;
-                c.recv_extra(2000).await.ok()
-            };
-            match pending {
-                Some(m) if m.starts_with("ACK") => {
-                    ack_received = true;
-                    break;
-                }
-                Some(m) if m.starts_with("CANCEL") => {
-                    log::info!("[{}] Remote sent CANCEL during setup", account_name);
-                    let from_header_val = utils::extract_header(&m, "From");
-                    let to_header_val = utils::extract_header(&m, "To");
-                    let call_id_val = utils::extract_header(&m, "Call-ID");
-                    let cseq_str = utils::extract_header(&m, "CSeq");
-                    let via_headers = utils::extract_headers_raw(&m, "Via");
-                    let via_block = via_headers.join("\r\n");
-                    let cseq_num = cseq_str
-                        .split_whitespace()
-                        .next()
-                        .and_then(|s| s.parse::<u32>().ok())
-                        .unwrap_or(1);
-
-                    let cancel_response = format!(
-                        "SIP/2.0 200 OK\r\n\
-                         {}\r\n\
-                         From: {}\r\n\
-                         To: {}\r\n\
-                         Call-ID: {}\r\n\
-                         CSeq: {} CANCEL\r\n\
-                         Content-Length: 0\r\n\
-                         \r\n",
-                        via_block, from_header_val, to_header_val, call_id_val, cseq_num,
-                    );
-                    {
-                        let c = client.lock().await;
-                        let branch = utils::extract_param(&m, "Via", "branch");
-                        let key = crate::sip::TransactionKey::new(branch, "CANCEL");
-                        let is_reliable = c.transport.via_str() != "UDP";
-                        c.transaction_mgr
-                            .record_server_response(key, cancel_response.clone(), is_reliable)
-                            .await;
-                        let _ = c
-                            .transport
-                            .send_to(cancel_response.as_bytes(), c.server_addr)
-                            .await;
-                    }
-                    cancelled = true;
-                    break;
-                }
-                Some(m) if m.starts_with("INVITE") => {
-                    log::debug!(
-                        "[{}] Remote retransmitted INVITE during ACK wait, resending 200 OK",
-                        account_name
-                    );
-                    let c = client.lock().await;
-                    let _ = c
-                        .transport
-                        .send_to(response.as_bytes(), c.server_addr)
-                        .await;
-                }
-                _ => {
-                    // Timeout or unrelated message — keep waiting for ACK.
-                }
+                let _ = c
+                    .transport
+                    .send_to(resp_487.as_bytes(), c.server_addr)
+                    .await;
             }
-        }
-
-        if cancelled {
-            crate::service::logger::record_call_end(&call_id, "Cancelled", 0);
+            crate::service::logger::record_call_end(&call_id_val, "Cancelled", 0);
             continue;
         }
 
-        if !ack_received {
-            log::warn!(
-                "[{}] No ACK received within timeout, proceeding with call setup",
-                account_name
-            );
-        }
+        // 3. Handle incoming INVITE
+        if msg.starts_with("INVITE") {
+            log::info!("[{}] Incoming INVITE!", account_name);
+            log::debug!("--- INCOMING ---\n{}", msg);
 
-        // Start RTP receiver
-        receiver.start(codec, Some(audio_tx.clone()));
+            let from_header_val = utils::extract_header(&msg, "From");
+            let to_header_val = utils::extract_header(&msg, "To");
+            let remote_uri = utils::extract_uri(&from_header_val);
+            let call_id = utils::extract_header(&msg, "Call-ID");
+            let cseq_str = utils::extract_header(&msg, "CSeq");
+            let cseq: u32 = cseq_str
+                .split_whitespace()
+                .next()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(1);
+            let via_headers = utils::extract_headers_raw(&msg, "Via");
+            let via_block = via_headers.join("\r\n");
 
-        // Mark as in-call
-        {
-            let mut c = client.lock().await;
-            c.in_call = true;
-            c.call_start_time = Some(std::time::Instant::now());
-            c.call_id = Some(call_id.clone());
-            c.invite_cseq = Some(cseq);
-            c.remote_tag = Some(from_tag.clone());
-            c.remote_rtp_addr = remote_rtp;
-            c.remote_uri = remote_uri;
-            c.remote_target = remote_contact_target;
-            c.route_set = uas_route_set;
-            c.rtp_receiver = Some(receiver.clone());
-            c.rtp_port = Some(bound_rtp_port);
-            if c.settings.session_timers {
-                let interval = utils::parse_session_expires(&msg)
-                    .map(|se| se.delta_seconds)
-                    .unwrap_or(1800);
-                c.session_expires_secs = Some(interval);
-                crate::service::managed_client::spawn_session_refresher(
-                    client.clone(),
-                    interval.into(),
-                );
-            }
-        }
-        crate::service::logger::record_call_connect(&call_id);
-
-        // Run IVR in background if configured
-        let ivr_task = if let Some(ivr_config) = ivr::build_ivr_config(&account) {
-            if let Some(remote_addr) = remote_rtp {
-                log::info!("[{}] Starting IVR session in background", account_name);
-                let session = ivr::IvrSession::new(ivr_config, codec);
-                let client_clone = client.clone();
-                let receiver_clone = receiver.clone();
-                let name_clone = account_name.clone();
-                Some(tokio::spawn(async move {
-                    if let Err(e) = session
-                        .run(&client_clone, remote_addr, &receiver_clone)
-                        .await
-                    {
-                        log::error!("[{}] IVR error: {}", name_clone, e);
-                    }
-                }))
-            } else {
-                log::warn!("[{}] No RTP address in SDP, skipping IVR", account_name);
-                None
-            }
-        } else {
-            None
-        };
-
-        // Keep waiting while the call is active (checking for BYE from remote)
-        loop {
-            let is_active = {
+            // Check if already in a call on this account -> send 486 Busy Here
+            let is_busy = {
                 let c = client.lock().await;
                 c.in_call
             };
-            if !is_active {
-                break;
-            }
-
-            // Poll for incoming SIP messages (like BYE)
-            let msg = {
+            if is_busy {
+                log::warn!(
+                    "[{}] Account is already in a call, rejecting new INVITE with 486 Busy Here",
+                    account_name
+                );
+                let to_formatted = if to_header_val.contains(";tag=") {
+                    to_header_val
+                } else {
+                    let c = client.lock().await;
+                    format!("{};tag={}", to_header_val, c.local_tag)
+                };
+                let busy_resp = format!(
+                    "SIP/2.0 486 Busy Here\r\n\
+                     {}\r\n\
+                     From: {}\r\n\
+                     To: {}\r\n\
+                     Call-ID: {}\r\n\
+                     CSeq: {} INVITE\r\n\
+                     Content-Length: 0\r\n\
+                     \r\n",
+                    via_block, from_header_val, to_formatted, call_id, cseq
+                );
                 let c = client.lock().await;
-                c.try_recv(50).await
-            };
+                let _ = c
+                    .transport
+                    .send_to(busy_resp.as_bytes(), c.server_addr)
+                    .await;
+                continue;
+            }
 
-            if let Some(m) = msg {
-                if m.starts_with("BYE") {
-                    log::info!("[{}] Remote party hung up (received BYE)", account_name);
-                    let from_header_val = utils::extract_header(&m, "From");
-                    let to_header_val = utils::extract_header(&m, "To");
-                    let call_id_val = utils::extract_header(&m, "Call-ID");
-                    let cseq_str = utils::extract_header(&m, "CSeq");
-                    let via_headers = utils::extract_headers_raw(&m, "Via");
-                    let via_block = via_headers.join("\r\n");
+            let auto_answer = account.auto_answer.unwrap_or(false);
 
-                    let cseq_num = cseq_str
-                        .split_whitespace()
-                        .next()
-                        .and_then(|s| s.parse::<u32>().ok())
-                        .unwrap_or(1);
+            if auto_answer {
+                // Auto-Answer: record call start and answer with 200 OK + SDP
+                crate::service::logger::record_call_start(
+                    &call_id,
+                    &account_name,
+                    &remote_uri.clone().unwrap_or_default(),
+                    "IN",
+                );
 
-                    let response = format!(
-                        "SIP/2.0 200 OK\r\n\
-                         {}\r\n\
-                         From: {}\r\n\
-                         To: {}\r\n\
-                         Call-ID: {}\r\n\
-                         CSeq: {} BYE\r\n\
-                         Content-Length: 0\r\n\
-                         \r\n",
-                        via_block, from_header_val, to_header_val, call_id_val, cseq_num,
-                    );
+                let mut c = client.lock().await;
+                let answered = c.answer_incoming(&msg, codec, Some(audio_tx.clone())).await;
+                drop(c);
 
-                    {
-                        let c = client.lock().await;
-                        let branch = utils::extract_param(&m, "Via", "branch");
-                        let key = crate::sip::TransactionKey::new(branch, "BYE");
-                        let is_reliable = c.transport.via_str() != "UDP";
-                        c.transaction_mgr
-                            .record_server_response(key, response.clone(), is_reliable)
-                            .await;
-                        let _ = c
-                            .transport
-                            .send_to(response.as_bytes(), c.server_addr)
-                            .await;
+                match answered {
+                    Ok(true) => {
+                        log::info!(
+                            "[{}] Incoming call auto-answered successfully",
+                            account_name
+                        );
+
+                        // Run IVR in background if configured
+                        if let Some(ivr_config) = ivr::build_ivr_config(&account) {
+                            let c = client.lock().await;
+                            let remote_addr = c.remote_rtp_addr;
+                            let receiver_opt = c.rtp_receiver.clone();
+                            drop(c);
+
+                            if let (Some(remote_addr), Some(receiver)) = (remote_addr, receiver_opt)
+                            {
+                                log::info!("[{}] Starting IVR session in background", account_name);
+                                let session = ivr::IvrSession::new(ivr_config, codec);
+                                let client_clone = client.clone();
+                                let name_clone = account_name.clone();
+                                ivr_task = Some(tokio::spawn(async move {
+                                    if let Err(e) =
+                                        session.run(&client_clone, remote_addr, &receiver).await
+                                    {
+                                        log::error!("[{}] IVR error: {}", name_clone, e);
+                                    }
+                                }));
+                            }
+                        }
                     }
+                    Ok(false) => {
+                        log::error!("[{}] Failed to auto-answer incoming call", account_name);
+                    }
+                    Err(e) => {
+                        log::error!("[{}] Error auto-answering call: {}", account_name, e);
+                    }
+                }
+            } else {
+                // Manual Answer Mode: Send 180 Ringing (RFC 3261 §13.3.1.1) and notify Web UI
+                log::info!(
+                    "[{}] Incoming call from {:?}, sending 180 Ringing and awaiting dashboard answer",
+                    account_name,
+                    remote_uri
+                );
+                crate::service::logger::record_call_start(
+                    &call_id,
+                    &account_name,
+                    &remote_uri.clone().unwrap_or_default(),
+                    "IN",
+                );
 
+                let (local_tag, local_addr_str, username, scheme) = {
+                    let c = client.lock().await;
+                    let via_transport = c.transport.via_str();
+                    let s = if via_transport.to_uppercase() == "TLS" {
+                        "sips"
+                    } else {
+                        "sip"
+                    };
+                    (
+                        c.local_tag.clone(),
+                        c.local_addr_str(),
+                        c.username.clone(),
+                        s,
+                    )
+                };
+
+                let to_formatted = if to_header_val.contains(";tag=") {
+                    to_header_val
+                } else {
+                    format!("{};tag={}", to_header_val, local_tag)
+                };
+
+                let ringing_resp = format!(
+                    "SIP/2.0 180 Ringing\r\n\
+                     {}\r\n\
+                     From: {}\r\n\
+                     To: {}\r\n\
+                     Call-ID: {}\r\n\
+                     CSeq: {} INVITE\r\n\
+                     Contact: <{}:{}@{}>\r\n\
+                     Content-Length: 0\r\n\
+                     \r\n",
+                    via_block,
+                    from_header_val,
+                    to_formatted,
+                    call_id,
+                    cseq,
+                    scheme,
+                    username,
+                    local_addr_str
+                );
+
+                {
                     let mut c = client.lock().await;
-                    c.in_call = false;
-                    break;
+                    let branch = utils::extract_param(&msg, "Via", "branch");
+                    let key = crate::sip::TransactionKey::new(branch, "INVITE");
+                    let is_reliable = c.transport.via_str() != "UDP";
+                    c.transaction_mgr
+                        .record_server_response(key, ringing_resp.clone(), is_reliable)
+                        .await;
+                    let _ = c
+                        .transport
+                        .send_to(ringing_resp.as_bytes(), c.server_addr)
+                        .await;
+
+                    // Set ringing state for the dashboard
+                    c.ringing = true;
+                    c.ringing_from = remote_uri;
+                    c.ringing_call_id = Some(call_id);
+                    c.ringing_cseq = Some(cseq);
+                    c.ringing_invite_msg = Some(msg);
                 }
             }
-
-            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-        }
-
-        // Wait for the IVR task to finish (e.g. saving voicemail WAV files)
-        if let Some(mut task) = ivr_task {
-            match tokio::time::timeout(std::time::Duration::from_secs(2), &mut task).await {
-                Ok(res) => {
-                    if let Err(e) = res {
-                        log::error!("[{}] IVR task joined with error: {:?}", account_name, e);
-                    }
-                }
-                Err(_) => {
-                    log::warn!(
-                        "[{}] IVR task did not finish in time, aborting",
-                        account_name
-                    );
-                    task.abort();
-                }
-            }
-        }
-
-        // Cleanup call state
-        {
-            let mut c = client.lock().await;
-            let duration_secs = c
-                .call_start_time
-                .map(|t| t.elapsed().as_secs())
-                .unwrap_or(0);
-            if let Some(ref cid) = c.call_id {
-                crate::service::logger::record_call_end(cid, "Completed", duration_secs);
-            }
-            // Stop RTP receiver to prevent resource leak
-            if let Some(ref rx) = c.rtp_receiver {
-                rx.stop();
-            }
-            c.clear_dialog_state();
         }
     }
 }

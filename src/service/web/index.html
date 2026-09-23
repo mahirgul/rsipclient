@@ -59,11 +59,11 @@
             <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
                 <div style="display: flex; align-items: center; gap: 0.3rem;">
                     <label for="banner-audio-input" style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 500;">Input Sound Card:</label>
-                    <select id="banner-audio-input" onchange="changeActiveAudioInput(this.value)" style="padding: 0.3rem 0.5rem; border-radius: 4px; font-size: 0.8rem; background: rgba(31, 41, 55, 0.9); color: var(--text-primary); border: 1px solid var(--card-border); outline: none;"></select>
+                    <select id="banner-audio-input" onchange="changeActiveAudioInput(this.value)" style="padding: 0.3rem 0.5rem; border-radius: 4px; font-size: 0.8rem; background: var(--input-bg); color: var(--text-primary); border: 1px solid var(--card-border); outline: none;"></select>
                 </div>
                 <div style="display: flex; align-items: center; gap: 0.3rem;">
                     <label for="banner-audio-output" style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 500;">Output Sound Card:</label>
-                    <select id="banner-audio-output" onchange="changeActiveAudioOutput(this.value)" style="padding: 0.3rem 0.5rem; border-radius: 4px; font-size: 0.8rem; background: rgba(31, 41, 55, 0.9); color: var(--text-primary); border: 1px solid var(--card-border); outline: none;"></select>
+                    <select id="banner-audio-output" onchange="changeActiveAudioOutput(this.value)" style="padding: 0.3rem 0.5rem; border-radius: 4px; font-size: 0.8rem; background: var(--input-bg); color: var(--text-primary); border: 1px solid var(--card-border); outline: none;"></select>
                 </div>
                 <button class="btn btn-danger" style="width: auto; padding: 0.4rem 1rem; font-size: 0.85rem;" onclick="leaveCallAudio()">Disconnect Audio</button>
             </div>
@@ -99,15 +99,16 @@
                                 <thead>
                                     <tr>
                                         <th>Account</th>
-                                        <th>SIP Server</th>
-                                        <th>Call ID</th>
+                                        <th>Remote Party</th>
+                                        <th>Direction</th>
+                                        <th>Duration</th>
                                         <th>State</th>
                                         <th>Action</th>
                                     </tr>
                                 </thead>
                                 <tbody id="active-calls-body">
                                     <tr>
-                                        <td colspan="5" style="text-align: center; color: var(--text-secondary);">No active calls ongoing.</td>
+                                        <td colspan="6" style="text-align: center; color: var(--text-secondary);">No active calls ongoing.</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -142,11 +143,11 @@
                         <div style="display: flex; flex-direction: column; gap: 0.75rem;">
                             <div>
                                 <label style="display: block; font-size: 0.8rem; margin-bottom: 0.25rem; color: var(--text-secondary); font-weight: 500;">Select Account</label>
-                                <select id="dialer-account" style="width: 100%; padding: 0.55rem; border-radius: 6px; border: 1px solid var(--card-border); background: rgba(255,255,255,0.05); color: var(--text-primary); font-size: 0.85rem; outline: none;"></select>
+                                <select id="dialer-account" style="width: 100%; padding: 0.55rem; border-radius: 6px; border: 1px solid var(--card-border); background: var(--input-bg); color: var(--text-primary); font-size: 0.85rem; outline: none;"></select>
                             </div>
                             <div>
                                 <label style="display: block; font-size: 0.8rem; margin-bottom: 0.25rem; color: var(--text-secondary); font-weight: 500;">Target SIP URI</label>
-                                <input type="text" id="dialer-target" name="dialer_target_uri" autocomplete="off" aria-autocomplete="none" readonly onfocus="this.removeAttribute('readonly');" placeholder="sip:bob@sip.example.com" style="width: 100%; padding: 0.55rem; border-radius: 6px; border: 1px solid var(--card-border); background: rgba(255,255,255,0.05); color: var(--text-primary); font-size: 0.85rem; outline: none;">
+                                <input type="text" id="dialer-target" name="dialer_target_uri" autocomplete="off" aria-autocomplete="none" readonly onfocus="this.removeAttribute('readonly');" placeholder="sip:bob@sip.example.com" style="width: 100%; padding: 0.55rem; border-radius: 6px; border: 1px solid var(--card-border); background: var(--input-bg); color: var(--text-primary); font-size: 0.85rem; outline: none;">
                             </div>
                             <button class="btn btn-success" onclick="placeOutboundCall()" style="width: 100%; font-size: 0.85rem; padding: 0.55rem;">Place Call</button>
                         </div>
@@ -306,7 +307,7 @@
                         </div>
                         <div class="form-group" style="margin-bottom: 0.8rem;">
                             <label style="display: block; font-size: 0.85rem; margin-bottom: 0.3rem; opacity: 0.8;">Protocol</label>
-                            <select id="settings-syslog-protocol" class="form-input" style="width: 100%; background: rgba(31, 41, 55, 0.9); border: 1px solid rgba(255,255,255,0.1); color: var(--text-primary); padding: 0.4rem; border-radius: 4px; outline: none;">
+                            <select id="settings-syslog-protocol" class="form-input" style="width: 100%; background: var(--input-bg); border: 1px solid var(--card-border); color: var(--text-primary); padding: 0.4rem; border-radius: 4px; outline: none;">
                                 <option value="udp">UDP</option>
                                 <option value="tcp">TCP</option>
                                 <option value="unix">UNIX (/dev/log)</option>
@@ -314,7 +315,7 @@
                         </div>
                         <div class="form-group" style="margin-bottom: 0.8rem;">
                             <label style="display: block; font-size: 0.85rem; margin-bottom: 0.3rem; opacity: 0.8;">Facility</label>
-                            <select id="settings-syslog-facility" class="form-input" style="width: 100%; background: rgba(31, 41, 55, 0.9); border: 1px solid rgba(255,255,255,0.1); color: var(--text-primary); padding: 0.4rem; border-radius: 4px; outline: none;">
+                            <select id="settings-syslog-facility" class="form-input" style="width: 100%; background: var(--input-bg); border: 1px solid var(--card-border); color: var(--text-primary); padding: 0.4rem; border-radius: 4px; outline: none;">
                                 <option value="user">user (1)</option>
                                 <option value="local0">local0 (16)</option>
                                 <option value="local1">local1 (17)</option>
@@ -341,7 +342,7 @@
                         <h3 style="margin: 0; color: var(--text-secondary);">Raw JSON Configuration Editor</h3>
                         <span style="font-size: 0.8rem; opacity: 0.6;">Edit full TOML structure using JSON representation</span>
                     </div>
-                    <textarea id="settings-raw-config" class="console-box" style="width: 100%; height: 350px; font-family: monospace; font-size: 0.9rem; padding: 1rem; color: #a9b7c6; background: rgba(10, 12, 18, 0.6); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; resize: vertical; outline: none;"></textarea>
+                    <textarea id="settings-raw-config" class="console-box" style="width: 100%; height: 350px; font-family: var(--font-mono); font-size: 0.9rem; padding: 1rem; resize: vertical; outline: none;"></textarea>
                 </div>
             </div>
         </main>
@@ -402,16 +403,16 @@
                 </div>
                 <div class="dashboard-detail-grid" style="grid-template-columns: 1fr 1.2fr; gap: 1.5rem;">
                     <!-- Diagram container -->
-                    <div style="background: rgba(10, 12, 18, 0.6); padding: 1rem; border-radius: 8px; border: 1px solid var(--card-border); overflow-y: auto; max-height: 500px;">
+                    <div style="background: var(--panel-subtle); padding: 1rem; border-radius: 8px; border: 1px solid var(--card-border); overflow-y: auto; max-height: 500px;">
                         <h4 style="margin: 0 0 1rem 0; font-size: 0.85rem; color: var(--text-secondary); text-transform: uppercase;">Sequence Diagram Flow</h4>
-                        <div id="sip-sequence-diagram" style="font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.5rem; color: #fff;">
+                        <div id="sip-sequence-diagram" style="font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.5rem; color: var(--text-primary);">
                             <!-- Dynamic sequence steps -->
                         </div>
                     </div>
                     <!-- Selected packet details -->
                     <div>
                         <h4 style="margin: 0 0 0.5rem 0; font-size: 0.85rem; color: var(--text-secondary); text-transform: uppercase;">Raw SIP Message Body</h4>
-                        <textarea id="sip-raw-message" class="console-box" style="width: 100%; height: 460px; font-family: monospace; font-size: 0.8rem; padding: 1rem; color: #a9b7c6; background: rgba(10, 12, 18, 0.8); border: 1px solid var(--card-border); border-radius: 6px; resize: none; outline: none;" placeholder="Click on any message in the sequence diagram flow to inspect the headers and SDP body..."></textarea>
+                        <textarea id="sip-raw-message" class="console-box" style="width: 100%; height: 460px; font-family: var(--font-mono); font-size: 0.8rem; padding: 1rem; resize: none; outline: none;" placeholder="Click on any message in the sequence diagram flow to inspect the headers and SDP body..."></textarea>
                     </div>
                 </div>
             </div>
@@ -427,7 +428,7 @@
 
                 <div class="dashboard-detail-grid" style="grid-template-columns: 280px 1fr; gap: 1.5rem;">
                     <!-- Left Column: Script Files List -->
-                    <div style="background: rgba(10, 12, 18, 0.6); padding: 1rem; border-radius: 8px; border: 1px solid var(--card-border);">
+                    <div style="background: var(--panel-subtle); padding: 1rem; border-radius: 8px; border: 1px solid var(--card-border);">
                         <h4 style="margin: 0 0 1rem 0; font-size: 0.85rem; color: var(--text-secondary); text-transform: uppercase;">Script Files (plugins/)</h4>
                         <div id="plugin-scripts-list" style="display: flex; flex-direction: column;">
                             <!-- Dynamic script file items -->
@@ -440,7 +441,7 @@
                             <h4 id="plugin-script-title" style="margin: 0; font-size: 0.9rem; color: var(--accent-primary);">Select a script file to edit</h4>
                             <button class="btn btn-primary" onclick="saveCurrentPluginScript()" style="width: auto; padding: 0.4rem 1.2rem; font-size: 0.85rem;">Save Script</button>
                         </div>
-                        <textarea id="plugin-script-editor" class="console-box" style="width: 100%; height: 450px; font-family: 'Fira Code', monospace; font-size: 0.85rem; padding: 1rem; color: #a9b7c6; background: rgba(10, 12, 18, 0.8); border: 1px solid var(--card-border); border-radius: 6px; resize: vertical; outline: none;" placeholder="Select or create a .rhai or .lua script file..."></textarea>
+                        <textarea id="plugin-script-editor" class="console-box" style="width: 100%; height: 450px; font-family: 'Fira Code', monospace; font-size: 0.85rem; padding: 1rem; resize: vertical; outline: none;" placeholder="Select or create a .rhai or .lua script file..."></textarea>
                     </div>
                 </div>
             </div>
@@ -502,7 +503,7 @@
                     </div>
                     <div class="form-group">
                         <label for="acc-codec">PREFERRED AUDIO CODEC</label>
-                        <select id="acc-codec" class="form-control" style="background: rgba(31, 41, 55, 0.9);">
+                        <select id="acc-codec" class="form-control">
                             <option value="pcmu">PCMU (G.711 u-law)</option>
                             <option value="pcma">PCMA (G.711 A-law)</option>
                             <option value="opus">Opus (Requires Opus support)</option>
@@ -513,7 +514,7 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label for="acc-transport">SIP TRANSPORT PROTOCOL</label>
-                        <select id="acc-transport" class="form-control" style="background: rgba(31, 41, 55, 0.9);">
+                        <select id="acc-transport" class="form-control">
                             <option value="udp">UDP (Default)</option>
                             <option value="tcp">TCP (Plain TCP)</option>
                             <option value="tls">TLS (SIPS over TLS)</option>
@@ -521,7 +522,7 @@
                     </div>
                     <div class="form-group">
                         <label for="acc-auth-method">AUTHENTICATION METHOD</label>
-                        <select id="acc-auth-method" class="form-control" style="background: rgba(31, 41, 55, 0.9);">
+                        <select id="acc-auth-method" class="form-control">
                             <option value="md5">MD5 Digest Auth (Default)</option>
                             <option value="none">None (No Auth Required)</option>
                         </select>
@@ -548,7 +549,7 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label for="acc-ivr-welcome">IVR WELCOME AUDIO FILE</label>
-                            <select id="acc-ivr-welcome" class="form-control" style="background: rgba(31, 41, 55, 0.9);"></select>
+                            <select id="acc-ivr-welcome" class="form-control"></select>
                         </div>
                         <div class="form-group">
                             <label for="acc-ivr-timeout">IVR DIGIT TIMEOUT (seconds)</label>
@@ -558,7 +559,7 @@
                     
                     <div class="form-group">
                         <label style="display: block; font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--accent-primary); font-weight: 600;">Interactive DTMF Menu Settings</label>
-                        <div id="ivr-menu-builder-list" style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 250px; overflow-y: auto; padding: 0.5rem; background: rgba(0,0,0,0.2); border: 1px solid var(--card-border); border-radius: 6px;">
+                        <div id="ivr-menu-builder-list" style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 250px; overflow-y: auto; padding: 0.5rem; background: var(--panel-subtle); border: 1px solid var(--card-border); border-radius: 6px;">
                             <!-- Dynamic DTMF rows -->
                         </div>
                     </div>
@@ -573,13 +574,13 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label for="acc-audio-input">HARDWARE AUDIO INPUT DEVICE (Microphone/Sound Card)</label>
-                        <select id="acc-audio-input" class="form-control" style="background: rgba(31, 41, 55, 0.9);">
+                        <select id="acc-audio-input" class="form-control">
                             <option value="">System Default Input Device</option>
                         </select>
                     </div>
                     <div class="form-group">
                         <label for="acc-audio-output">HARDWARE AUDIO OUTPUT DEVICE (Speaker/Sound Card)</label>
-                        <select id="acc-audio-output" class="form-control" style="background: rgba(31, 41, 55, 0.9);">
+                        <select id="acc-audio-output" class="form-control">
                             <option value="">System Default Output Device</option>
                         </select>
                     </div>
@@ -627,6 +628,24 @@
 
                 <button type="submit" class="btn" style="margin-top: 1rem;">Save Configuration</button>
             </form>
+        </div>
+    </div>
+
+    <!-- ── MODAL: INCOMING CALL ── -->
+    <div id="incoming-call-modal" class="modal" style="z-index: 10001;">
+        <div class="modal-content glass" style="max-width: 440px; text-align: center; border-color: var(--accent-success); box-shadow: 0 12px 48px 0 rgba(16, 185, 129, 0.3);">
+            <div class="ringing-pulse-icon">📞</div>
+            <h2 style="font-size: 1.4rem; margin-bottom: 0.5rem; color: var(--accent-success);">Incoming Call</h2>
+            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Account: <span id="incoming-account-name" style="font-weight: 600; color: var(--text-primary);">-</span></div>
+            <div id="incoming-caller-uri" style="font-size: 1.15rem; font-weight: 700; word-break: break-all; margin: 0.75rem 0 1.5rem 0; font-family: var(--font-mono); color: var(--text-primary);">-</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <button id="incoming-btn-answer" class="btn btn-success" style="padding: 0.85rem 1rem; font-size: 1rem;" onclick="answerIncomingModal()">
+                    📞 Answer
+                </button>
+                <button id="incoming-btn-reject" class="btn btn-danger" style="padding: 0.85rem 1rem; font-size: 1rem;" onclick="rejectIncomingModal()">
+                    ❌ Decline
+                </button>
+            </div>
         </div>
     </div>
 

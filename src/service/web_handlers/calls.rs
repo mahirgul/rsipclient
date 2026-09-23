@@ -61,6 +61,80 @@ pub async fn call_account(
     }
 }
 
+pub async fn answer_account(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, StatusCode> {
+    verify_token(&headers, &state)?;
+    let (client_arc, codec, audio_tx) = {
+        let cls = state.clients.lock().await;
+        let mc = cls.get(&name).ok_or(StatusCode::NOT_FOUND)?;
+        (mc.client.clone(), mc.codec, mc.audio_tx.clone())
+    };
+    let mut client = client_arc.lock().await;
+    if !client.ringing || client.ringing_invite_msg.is_none() {
+        return Ok(Json(
+            serde_json::json!({ "success": false, "msg": "No incoming call ringing" }),
+        ));
+    }
+    let invite_msg = client.ringing_invite_msg.clone().unwrap();
+    match client
+        .answer_incoming(&invite_msg, codec, Some(audio_tx))
+        .await
+    {
+        Ok(true) => {
+            if client.settings.session_timers {
+                let interval: u64 = client.session_expires_secs.unwrap_or(1800).into();
+                crate::service::managed_client::spawn_session_refresher(
+                    client_arc.clone(),
+                    interval,
+                );
+            }
+            Ok(Json(
+                serde_json::json!({ "success": true, "msg": "Call answered" }),
+            ))
+        }
+        Ok(false) => Ok(Json(
+            serde_json::json!({ "success": false, "msg": "Failed to answer call" }),
+        )),
+        Err(e) => Ok(Json(
+            serde_json::json!({ "success": false, "msg": format!("Error: {}", e) }),
+        )),
+    }
+}
+
+pub async fn reject_account(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, StatusCode> {
+    verify_token(&headers, &state)?;
+    let client_arc = {
+        let cls = state.clients.lock().await;
+        let mc = cls.get(&name).ok_or(StatusCode::NOT_FOUND)?;
+        mc.client.clone()
+    };
+    let mut client = client_arc.lock().await;
+    if !client.ringing || client.ringing_invite_msg.is_none() {
+        return Ok(Json(
+            serde_json::json!({ "success": false, "msg": "No incoming call ringing" }),
+        ));
+    }
+    let invite_msg = client.ringing_invite_msg.clone().unwrap();
+    match client.reject_incoming(&invite_msg).await {
+        Ok(true) => Ok(Json(
+            serde_json::json!({ "success": true, "msg": "Call rejected" }),
+        )),
+        Ok(false) => Ok(Json(
+            serde_json::json!({ "success": false, "msg": "Failed to reject call" }),
+        )),
+        Err(e) => Ok(Json(
+            serde_json::json!({ "success": false, "msg": format!("Error: {}", e) }),
+        )),
+    }
+}
+
 pub async fn hangup_account(
     State(state): State<AppState>,
     Path(name): Path<String>,
@@ -73,6 +147,13 @@ pub async fn hangup_account(
         mc.client.clone()
     };
     let mut client = client_arc.lock().await;
+    if client.ringing && client.ringing_invite_msg.is_some() {
+        let invite_msg = client.ringing_invite_msg.clone().unwrap();
+        let _ = client.reject_incoming(&invite_msg).await;
+        return Ok(Json(
+            serde_json::json!({ "success": true, "msg": "Call rejected" }),
+        ));
+    }
     match client.bye().await {
         Ok(true) => Ok(Json(
             serde_json::json!({ "success": true, "msg": "Call ended" }),

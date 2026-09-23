@@ -148,29 +148,29 @@ pub async fn create_managed_client(account: &Account) -> Result<ManagedClient> {
 
 /// Helper to spawn background watchers (call and registration watchers) for a client.
 pub fn spawn_watchers_for_client(name: String, mc: &ManagedClient, shutdown: Arc<Mutex<bool>>) {
+    let client_for_call = mc.client.clone();
+    let codec = mc.codec;
+    let account = mc.account.clone();
+    let shutdown_call = shutdown.clone();
+    let active_call = mc.active.clone();
+    let audio_tx = mc.audio_tx.clone();
+    let account_name = name.clone();
     if mc.account.auto_answer.unwrap_or(false) {
-        let client = mc.client.clone();
-        let codec = mc.codec;
-        let account = mc.account.clone();
-        let shutdown = shutdown.clone();
-        let active = mc.active.clone();
-        let audio_tx = mc.audio_tx.clone();
-        let account_name = name.clone();
         log::info!("Auto-answer enabled for '{}'", account_name);
-
-        tokio::spawn(async move {
-            incoming_call_watcher(
-                account_name,
-                client,
-                codec,
-                account,
-                shutdown,
-                active,
-                audio_tx,
-            )
-            .await;
-        });
     }
+
+    tokio::spawn(async move {
+        incoming_call_watcher(
+            account_name,
+            client_for_call,
+            codec,
+            account,
+            shutdown_call,
+            active_call,
+            audio_tx,
+        )
+        .await;
+    });
 
     let client = mc.client.clone();
     let active = mc.active.clone();

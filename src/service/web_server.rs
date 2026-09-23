@@ -45,6 +45,11 @@ pub struct AccountStatus {
     pub in_call: bool,
     pub held: bool,
     pub call_id: Option<String>,
+    pub remote_uri: Option<String>,
+    pub direction: Option<String>,
+    pub ringing: bool,
+    pub ringing_from: Option<String>,
+    pub call_duration_secs: u64,
     pub codec: String,
     pub codec_rate: u32,
     pub audio_input_device: Option<String>,
@@ -158,6 +163,8 @@ pub async fn start_web_server(state: AppState, port: u16) {
         .route("/api/accounts/:name/register", post(register_account))
         .route("/api/accounts/:name/unregister", post(unregister_account))
         .route("/api/accounts/:name/call", post(call_account))
+        .route("/api/accounts/:name/answer", post(answer_account))
+        .route("/api/accounts/:name/reject", post(reject_account))
         .route("/api/accounts/:name/hangup", post(hangup_account))
         .route("/api/accounts/:name/hold", post(hold_account))
         .route("/api/accounts/:name/resume", post(resume_account))

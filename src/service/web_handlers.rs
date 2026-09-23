@@ -18,8 +18,8 @@ pub use accounts::{
 pub use audio_ws::audio_ws_handler;
 pub use auth::login;
 pub use calls::{
-    call_account, dtmf_account, hangup_account, hold_account, play_account, resume_account,
-    send_info_dtmf_account, send_message_account, transfer_account,
+    answer_account, call_account, dtmf_account, hangup_account, hold_account, play_account,
+    reject_account, resume_account, send_info_dtmf_account, send_message_account, transfer_account,
 };
 pub use config_handlers::{get_config, put_config};
 pub use status::{get_call_history, get_logs, get_sip_traces, get_status};

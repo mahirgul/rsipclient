@@ -82,8 +82,97 @@ function switchTab(tabId) {
     }
 }
 
+// State tracking for call lifecycle notifications
+let prevAccountStates = {};
+let currentRingingAccount = null;
+let ringAudioContext = null;
+let ringOscillator = null;
+
+function startRingingAudio() {
+    try {
+        if (ringAudioContext) return;
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        ringAudioContext = new AudioCtx();
+        const osc1 = ringAudioContext.createOscillator();
+        const osc2 = ringAudioContext.createOscillator();
+        const gainNode = ringAudioContext.createGain();
+
+        osc1.type = 'sine';
+        osc1.frequency.value = 440;
+        osc2.type = 'sine';
+        osc2.frequency.value = 480;
+
+        const now = ringAudioContext.currentTime;
+        gainNode.gain.setValueAtTime(0, now);
+        for (let i = 0; i < 30; i++) {
+            const start = now + i * 3;
+            gainNode.gain.setValueAtTime(0.08, start);
+            gainNode.gain.setValueAtTime(0.08, start + 1.2);
+            gainNode.gain.setValueAtTime(0, start + 1.25);
+        }
+
+        osc1.connect(gainNode);
+        osc2.connect(gainNode);
+        gainNode.connect(ringAudioContext.destination);
+
+        osc1.start();
+        osc2.start();
+        ringOscillator = { osc1, osc2, gainNode };
+    } catch (e) {
+        console.warn("Could not start audio ringtone:", e);
+    }
+}
+
+function stopRingingAudio() {
+    try {
+        if (ringAudioContext) {
+            ringAudioContext.close();
+            ringAudioContext = null;
+            ringOscillator = null;
+        }
+    } catch (e) {
+        console.warn("Error stopping ringtone:", e);
+    }
+}
+
+function showIncomingCallModal(accountName, callerUri) {
+    currentRingingAccount = accountName;
+    const modal = document.getElementById('incoming-call-modal');
+    if (modal) {
+        const accEl = document.getElementById('incoming-account-name');
+        const uriEl = document.getElementById('incoming-caller-uri');
+        if (accEl) accEl.innerText = accountName;
+        if (uriEl) uriEl.innerText = callerUri || 'Unknown Caller';
+        modal.classList.add('active');
+        startRingingAudio();
+    }
+}
+
+function hideIncomingCallModal() {
+    const modal = document.getElementById('incoming-call-modal');
+    if (modal) {
+        modal.classList.remove('active');
+    }
+    stopRingingAudio();
+    currentRingingAccount = null;
+}
+
+async function answerIncomingModal() {
+    if (!currentRingingAccount) return;
+    const acc = currentRingingAccount;
+    await answerCall(acc);
+}
+
+async function rejectIncomingModal() {
+    if (!currentRingingAccount) return;
+    const acc = currentRingingAccount;
+    await rejectCall(acc);
+}
+
 // Format duration into hh:mm:ss
 function formatDuration(sec) {
+    if (!sec || sec < 0) return '00:00:00';
     const hrs = Math.floor(sec / 3600).toString().padStart(2, '0');
     const mins = Math.floor((sec % 3600) / 60).toString().padStart(2, '0');
     const secs = (sec % 60).toString().padStart(2, '0');
@@ -168,54 +257,136 @@ async function updateDashboard() {
             });
         }
 
+        // State transition detection & notifications
+        let activeRingingAccountFound = null;
+
+        status.accounts.forEach(acc => {
+            const prev = prevAccountStates[acc.name];
+
+            // Detect newly ringing call
+            if (acc.ringing) {
+                activeRingingAccountFound = acc;
+                if (!prev || !prev.ringing) {
+                    showNotification(`📞 Incoming call from ${acc.ringing_from || 'unknown caller'} on account '${acc.name}'`, "info");
+                    showIncomingCallModal(acc.name, acc.ringing_from);
+                }
+            }
+
+            // Detect call ended (was in call, now not in call and not ringing)
+            if (prev && prev.in_call && !acc.in_call) {
+                showNotification(`📴 Call ended on account '${acc.name}'`, "info");
+                if (activeAudioSession.accountName === acc.name) {
+                    console.log("Active call ended, disconnecting audio session.");
+                    leaveCallAudio();
+                }
+            }
+
+            // Detect cancelled incoming call (was ringing, now neither ringing nor in call)
+            if (prev && prev.ringing && !acc.ringing && !acc.in_call) {
+                if (currentRingingAccount === acc.name) {
+                    hideIncomingCallModal();
+                }
+                showNotification(`📞 Incoming call from ${prev.ringing_from || 'caller'} was cancelled`, "warning");
+            }
+
+            // Detect call connected
+            if (prev && !prev.in_call && acc.in_call) {
+                if (currentRingingAccount === acc.name) {
+                    hideIncomingCallModal();
+                }
+                if (acc.direction === 'in') {
+                    showNotification(`📞 Incoming call connected on account '${acc.name}'`, "success");
+                }
+            }
+
+            // Update state record
+            prevAccountStates[acc.name] = {
+                in_call: acc.in_call,
+                ringing: acc.ringing,
+                ringing_from: acc.ringing_from,
+                remote_uri: acc.remote_uri,
+                direction: acc.direction
+            };
+        });
+
+        // If no accounts are ringing anymore, ensure modal and ringtone are stopped
+        if (!activeRingingAccountFound && currentRingingAccount) {
+            hideIncomingCallModal();
+        }
+
         // If we have an active audio session, but the account is no longer in a call, disconnect
         if (activeAudioSession.accountName) {
             const matched = status.accounts.find(a => a.name === activeAudioSession.accountName && a.in_call);
             if (!matched) {
-                console.log("Active call ended, disconnecting audio session.");
                 leaveCallAudio();
             }
         }
 
-        // Build Active Calls Table
+        // Build Active Calls Table (both in_call and ringing calls)
         const callsBody = document.getElementById('active-calls-body');
         callsBody.innerHTML = '';
-        const activeCalls = status.accounts.filter(a => a.in_call);
-        if (activeCalls.length === 0) {
-            callsBody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-secondary);">No active calls ongoing.</td></tr>`;
+        const ongoingCalls = status.accounts.filter(a => a.in_call || a.ringing);
+        if (ongoingCalls.length === 0) {
+            callsBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-secondary);">No active calls ongoing.</td></tr>`;
         } else {
-            activeCalls.forEach(call => {
+            ongoingCalls.forEach(call => {
                 const tr = document.createElement('tr');
                 const isJoined = activeAudioSession.accountName === call.name;
                 const joinText = isJoined ? "Leave Audio" : "Join Audio";
                 const joinClass = isJoined ? "btn-danger" : "btn-success";
-                const stateBadge = call.held 
-                    ? `<span class="badge badge-warning" style="animation: pulse 2s infinite;">HELD</span>` 
-                    : `<span class="badge badge-success" style="animation: pulse 1.5s infinite;">IN CALL</span>`;
-                tr.innerHTML = `
-                    <td style="font-weight:600;">${call.name}</td>
-                    <td>${call.server}</td>
-                    <td style="font-family: var(--font-mono); font-size:0.8rem;">${call.call_id || '-'}</td>
-                    <td>${stateBadge}</td>
-                    <td style="display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap;">
+
+                const remoteParty = call.ringing ? (call.ringing_from || '-') : (call.remote_uri || call.server || '-');
+                const isIncoming = call.ringing || call.direction === 'in';
+                const directionBadge = isIncoming
+                    ? `<span class="badge badge-incoming">Incoming</span>`
+                    : `<span class="badge badge-outgoing">Outgoing</span>`;
+                
+                let stateBadge = '';
+                let durationText = '';
+                let actionControls = '';
+
+                if (call.ringing) {
+                    stateBadge = `<span class="badge badge-ringing">RINGING</span>`;
+                    durationText = `<span style="font-style: italic; color: var(--accent-warning);">Ringing...</span>`;
+                    actionControls = `
+                        <button class="btn btn-success action-btn action-btn-sm" style="width:auto; padding: 0.35rem 0.6rem; font-size: 0.75rem;" onclick="answerCall('${call.name}')">📞 Answer</button>
+                        <button class="btn btn-danger action-btn action-btn-sm" style="width:auto; padding: 0.35rem 0.6rem; font-size: 0.75rem;" onclick="rejectCall('${call.name}')">❌ Decline</button>
+                    `;
+                } else {
+                    stateBadge = call.held 
+                        ? `<span class="badge badge-warning" style="animation: pulse 2s infinite;">HELD</span>` 
+                        : `<span class="badge badge-success" style="animation: pulse 1.5s infinite;">IN CALL</span>`;
+                    durationText = formatDuration(call.call_duration_secs);
+                    actionControls = `
                         <button class="btn ${joinClass} action-btn action-btn-sm" style="width:auto; padding: 0.35rem 0.6rem; font-size: 0.75rem;" onclick="toggleJoinCall('${call.name}', ${call.codec_rate})">${joinText}</button>
                         <button class="btn btn-warning action-btn action-btn-sm" style="width:auto; padding: 0.35rem 0.6rem; font-size: 0.75rem;" onclick="toggleHoldCall('${call.name}', ${call.held})">${call.held ? 'Resume' : 'Hold'}</button>
                         <button class="btn btn-danger action-btn action-btn-sm" style="width:auto; padding: 0.35rem 0.6rem; font-size: 0.75rem;" onclick="hangupCall('${call.name}')">Hangup</button>
                         
-                        <div style="display: inline-flex; gap: 0.2rem; background: rgba(255,255,255,0.05); padding: 0.2rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
-                            <input type="text" id="dtmf-${call.name}" placeholder="DTMF" autocomplete="off" spellcheck="false" style="width: 50px; background: transparent; border: none; color: #fff; font-size: 0.75rem; outline: none; text-align: center;">
+                        <div style="display: inline-flex; gap: 0.2rem; background: var(--input-bg); padding: 0.2rem; border-radius: 4px; border: 1px solid var(--card-border);">
+                            <input type="text" id="dtmf-${call.name}" placeholder="DTMF" autocomplete="off" spellcheck="false" style="width: 50px; background: transparent; border: none; color: var(--text-primary); font-size: 0.75rem; outline: none; text-align: center;">
                             <button class="btn btn-primary action-btn action-btn-sm" style="width:auto; padding: 0.2rem 0.4rem; font-size: 0.7rem; border-radius: 2px;" onclick="sendDtmfCall('${call.name}')">Send</button>
                         </div>
                         
-                        <div style="display: inline-flex; gap: 0.2rem; background: rgba(255,255,255,0.05); padding: 0.2rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
-                            <input type="text" id="refer-${call.name}" placeholder="Transfer URI" autocomplete="off" spellcheck="false" style="width: 100px; background: transparent; border: none; color: #fff; font-size: 0.75rem; outline: none; text-align: center;">
+                        <div style="display: inline-flex; gap: 0.2rem; background: var(--input-bg); padding: 0.2rem; border-radius: 4px; border: 1px solid var(--card-border);">
+                            <input type="text" id="refer-${call.name}" placeholder="Transfer URI" autocomplete="off" spellcheck="false" style="width: 100px; background: transparent; border: none; color: var(--text-primary); font-size: 0.75rem; outline: none; text-align: center;">
                             <button class="btn btn-primary action-btn action-btn-sm" style="width:auto; padding: 0.2rem 0.4rem; font-size: 0.7rem; border-radius: 2px;" onclick="transferCall('${call.name}')">Transfer</button>
                         </div>
                         
-                        <div style="display: inline-flex; gap: 0.2rem; background: rgba(255,255,255,0.05); padding: 0.2rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
-                            <input type="text" id="play-${call.name}" placeholder="WAV Path" autocomplete="off" spellcheck="false" style="width: 80px; background: transparent; border: none; color: #fff; font-size: 0.75rem; outline: none; text-align: center;">
+                        <div style="display: inline-flex; gap: 0.2rem; background: var(--input-bg); padding: 0.2rem; border-radius: 4px; border: 1px solid var(--card-border);">
+                            <input type="text" id="play-${call.name}" placeholder="WAV Path" autocomplete="off" spellcheck="false" style="width: 80px; background: transparent; border: none; color: var(--text-primary); font-size: 0.75rem; outline: none; text-align: center;">
                             <button class="btn btn-primary action-btn action-btn-sm" style="width:auto; padding: 0.2rem 0.4rem; font-size: 0.7rem; border-radius: 2px;" onclick="playWavCall('${call.name}')">Play</button>
                         </div>
+                    `;
+                }
+
+                tr.innerHTML = `
+                    <td style="font-weight:600;">${call.name}</td>
+                    <td style="font-family: var(--font-mono); font-size:0.85rem;">${remoteParty}</td>
+                    <td>${directionBadge}</td>
+                    <td style="font-family: var(--font-mono); font-size:0.85rem;">${durationText}</td>
+                    <td>${stateBadge}</td>
+                    <td style="display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap;">
+                        ${actionControls}
                     </td>
                 `;
                 callsBody.appendChild(tr);
@@ -684,6 +855,46 @@ async function placeOutboundCall() {
         }
     } catch (err) {
         showNotification("Error placing call: " + err, "error");
+    }
+}
+
+async function answerCall(name) {
+    try {
+        const res = await fetch(`${API_URL}/api/accounts/${name}/answer`, {
+            method: 'POST',
+            headers: getAuthHeaders()
+        });
+        const data = await res.json();
+        hideIncomingCallModal();
+        if (data.success) {
+            showNotification(data.msg || "Call answered successfully", "success");
+            updateDashboard();
+        } else {
+            showNotification("Failed to answer call: " + data.msg, "error");
+        }
+    } catch (err) {
+        hideIncomingCallModal();
+        showNotification("Error answering call: " + err, "error");
+    }
+}
+
+async function rejectCall(name) {
+    try {
+        const res = await fetch(`${API_URL}/api/accounts/${name}/reject`, {
+            method: 'POST',
+            headers: getAuthHeaders()
+        });
+        const data = await res.json();
+        hideIncomingCallModal();
+        if (data.success) {
+            showNotification(data.msg || "Call declined", "info");
+            updateDashboard();
+        } else {
+            showNotification("Failed to decline call: " + data.msg, "error");
+        }
+    } catch (err) {
+        hideIncomingCallModal();
+        showNotification("Error declining call: " + err, "error");
     }
 }
 

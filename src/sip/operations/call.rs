@@ -172,6 +172,7 @@ impl SipClient {
                     self.rtp_receiver = Some(receiver);
                     self.rtp_port = Some(bound_rtp_port);
                     self.in_call = true;
+                    self.call_direction = Some("out".to_string());
                     sdp::warn_codec_mismatch(configured_codec, &final_resp2);
                     self.call_start_time = Some(std::time::Instant::now());
                     if self.settings.session_timers {
@@ -219,6 +220,7 @@ impl SipClient {
                 self.remote_target = Some(target);
             }
             self.in_call = true;
+            self.call_direction = Some("out".to_string());
             self.call_start_time = Some(std::time::Instant::now());
             self.remote_rtp_addr = crate::service::watcher::parse_sdp_connection(&final_resp);
             self.rtp_receiver = Some(receiver);
@@ -438,5 +440,177 @@ impl SipClient {
                 .await?;
         }
         Ok(())
+    }
+
+    /// Answer an incoming INVITE request with 200 OK and start the RTP receiver (RFC 3261 §13.3.1.4).
+    pub async fn answer_incoming(
+        &mut self,
+        invite_msg: &str,
+        codec: Codec,
+        audio_tx: Option<tokio::sync::broadcast::Sender<Vec<i16>>>,
+    ) -> Result<bool> {
+        let from_tag = utils::extract_param(invite_msg, "From", "tag");
+        let from_header_val = utils::extract_header(invite_msg, "From");
+        let to_header_val = utils::extract_header(invite_msg, "To");
+        let remote_uri = utils::extract_uri(&from_header_val);
+        let call_id = utils::extract_header(invite_msg, "Call-ID");
+        let cseq_str = utils::extract_header(invite_msg, "CSeq");
+        let cseq: u32 = cseq_str
+            .split_whitespace()
+            .next()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(1);
+        let via_headers = utils::extract_headers_raw(invite_msg, "Via");
+        let via_block = via_headers.join("\r\n");
+
+        let remote_rtp = crate::service::watcher::parse_sdp_connection(invite_msg);
+        sdp::warn_codec_mismatch(codec, invite_msg);
+
+        let (receiver, bound_rtp_port) =
+            crate::rtp::receiver::RtpReceiver::bind_range(self.rtp_port_start, self.rtp_port_end)
+                .await?;
+
+        let record_route_lines = utils::extract_headers_raw(invite_msg, "Record-Route");
+        let record_route_block = if record_route_lines.is_empty() {
+            String::new()
+        } else {
+            format!("{}\r\n", record_route_lines.join("\r\n"))
+        };
+        let remote_contact_target =
+            utils::extract_uri(&utils::extract_header(invite_msg, "Contact"));
+        let uas_route_set = utils::extract_record_routes(invite_msg);
+
+        let local_ip = self.local_addr.ip().to_string();
+        let sdp_body = sdp::build_sdp_single(&self.username, &local_ip, bound_rtp_port, codec);
+        let sdp_len = sdp_body.len();
+        let via_transport = self.transport.via_str();
+        let scheme = if via_transport.to_uppercase() == "TLS" {
+            "sips"
+        } else {
+            "sip"
+        };
+
+        let to_formatted = if to_header_val.contains(";tag=") {
+            to_header_val.clone()
+        } else {
+            format!("{};tag={}", to_header_val, self.local_tag)
+        };
+
+        let response = format!(
+            "SIP/2.0 200 OK\r\n\
+             {}\r\n\
+             {}\
+             From: {}\r\n\
+             To: {}\r\n\
+             Call-ID: {}\r\n\
+             CSeq: {} INVITE\r\n\
+             Contact: <{}:{}@{}>\r\n\
+             Content-Type: application/sdp\r\n\
+             Content-Length: {}\r\n\
+             \r\n\
+             {}",
+            via_block,
+            record_route_block,
+            from_header_val,
+            to_formatted,
+            call_id,
+            cseq,
+            scheme,
+            self.username,
+            self.local_addr_str(),
+            sdp_len,
+            sdp_body,
+        );
+
+        let branch = utils::extract_param(invite_msg, "Via", "branch");
+        let key = crate::sip::TransactionKey::new(branch, "INVITE");
+        let is_reliable = self.transport.via_str() != "UDP";
+        self.transaction_mgr
+            .record_server_response(key, response.clone(), is_reliable)
+            .await;
+        self.transport
+            .send_to(response.as_bytes(), self.server_addr)
+            .await?;
+
+        // Start RTP receiver
+        receiver.start(codec, audio_tx);
+
+        self.in_call = true;
+        self.call_direction = Some("in".to_string());
+        self.call_start_time = Some(std::time::Instant::now());
+        self.call_id = Some(call_id.clone());
+        self.invite_cseq = Some(cseq);
+        self.remote_tag = Some(from_tag);
+        self.remote_rtp_addr = remote_rtp;
+        self.remote_uri = remote_uri;
+        self.remote_target = remote_contact_target;
+        self.route_set = uas_route_set;
+        self.rtp_receiver = Some(receiver);
+        self.rtp_port = Some(bound_rtp_port);
+        self.ringing = false;
+        self.ringing_from = None;
+        self.ringing_call_id = None;
+        self.ringing_cseq = None;
+        self.ringing_invite_msg = None;
+
+        if self.settings.session_timers {
+            self.session_expires_secs = utils::parse_session_expires(invite_msg)
+                .map(|se| se.delta_seconds)
+                .or(Some(1800));
+        }
+
+        crate::service::logger::record_call_connect(&call_id);
+        log::info!(
+            "Incoming call answered! Remote RTP: {:?}",
+            self.remote_rtp_addr
+        );
+        Ok(true)
+    }
+
+    /// Reject an incoming ringing call with 486 Busy Here (RFC 3261 §21.4.17).
+    pub async fn reject_incoming(&mut self, invite_msg: &str) -> Result<bool> {
+        let from_header_val = utils::extract_header(invite_msg, "From");
+        let to_header_val = utils::extract_header(invite_msg, "To");
+        let call_id = utils::extract_header(invite_msg, "Call-ID");
+        let cseq_str = utils::extract_header(invite_msg, "CSeq");
+        let via_headers = utils::extract_headers_raw(invite_msg, "Via");
+        let via_block = via_headers.join("\r\n");
+
+        let to_formatted = if to_header_val.contains(";tag=") {
+            to_header_val
+        } else {
+            format!("{};tag={}", to_header_val, self.local_tag)
+        };
+
+        let response = format!(
+            "SIP/2.0 486 Busy Here\r\n\
+             {}\r\n\
+             From: {}\r\n\
+             To: {}\r\n\
+             Call-ID: {}\r\n\
+             CSeq: {}\r\n\
+             Content-Length: 0\r\n\
+             \r\n",
+            via_block, from_header_val, to_formatted, call_id, cseq_str
+        );
+
+        let branch = utils::extract_param(invite_msg, "Via", "branch");
+        let key = crate::sip::TransactionKey::new(branch, "INVITE");
+        let is_reliable = self.transport.via_str() != "UDP";
+        self.transaction_mgr
+            .record_server_response(key, response.clone(), is_reliable)
+            .await;
+        self.transport
+            .send_to(response.as_bytes(), self.server_addr)
+            .await?;
+
+        crate::service::logger::record_call_end(&call_id, "Rejected", 0);
+        self.ringing = false;
+        self.ringing_from = None;
+        self.ringing_call_id = None;
+        self.ringing_cseq = None;
+        self.ringing_invite_msg = None;
+        log::info!("Incoming call rejected (486 Busy Here sent)");
+        Ok(true)
     }
 }
