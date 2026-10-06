@@ -132,11 +132,76 @@ fn simple_resample(samples: &[i16], from_rate: u32, to_rate: u32) -> Vec<i16> {
             let frac = (i as f64 * ratio) - src_idx as f64;
             let a = samples[src_idx] as f64;
             let b = samples[src_idx + 1] as f64;
-            out.push((a + (b - a) * frac) as i16);
+            out.push((a + (b - a) * frac).round() as i16);
         } else {
             out.push(*samples.last().unwrap_or(&0));
         }
     }
 
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resample_is_identity_for_equal_rates_and_empty_input() {
+        assert_eq!(simple_resample(&[1, 2, 3], 8000, 8000), vec![1, 2, 3]);
+        assert!(simple_resample(&[], 16000, 8000).is_empty());
+    }
+
+    #[test]
+    fn downsampling_halves_the_length_and_keeps_samples() {
+        let input: Vec<i16> = (0..160).collect();
+        let out = simple_resample(&input, 16000, 8000);
+        assert_eq!(out.len(), 80);
+        assert_eq!(out[0], 0);
+        assert_eq!(out[10], 20);
+        assert_eq!(out[79], 158);
+    }
+
+    #[test]
+    fn upsampling_interpolates_between_neighbours() {
+        let out = simple_resample(&[0, 600, 1200], 8000, 48000);
+        assert_eq!(out.len(), 18);
+        assert_eq!(&out[..7], &[0, 100, 200, 300, 400, 500, 600]);
+        // Samples past the last input hold the final value.
+        assert_eq!(*out.last().unwrap(), 1200);
+    }
+
+    #[tokio::test]
+    async fn sends_well_formed_rtp_packets() {
+        let rx = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let tx = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let target = rx.local_addr().unwrap();
+
+        // 50 ms of 16 kHz audio → 400 samples at 8 kHz → 3 packets (160+160+80).
+        let samples = vec![1000i16; 800];
+        let sent = send_wav_rtp_on_socket(&tx, &samples, 16000, target, Codec::Pcma)
+            .await
+            .unwrap();
+        assert_eq!(sent, 3);
+
+        let mut buf = [0u8; 1500];
+        let mut headers = Vec::new();
+        for _ in 0..sent {
+            let n = rx.recv(&mut buf).await.unwrap();
+            let pkt = crate::rtp::receiver::parse_rtp(&buf[..n]).unwrap();
+            assert_eq!(pkt.payload_type, 8);
+            let ts = u32::from_be_bytes([buf[4], buf[5], buf[6], buf[7]]);
+            let ssrc = u32::from_be_bytes([buf[8], buf[9], buf[10], buf[11]]);
+            headers.push((pkt.sequence, ts, ssrc, pkt.payload.len()));
+        }
+        assert_eq!(headers[0].3, 160);
+        assert_eq!(headers[2].3, 80);
+        assert!(
+            headers.iter().all(|h| h.2 == headers[0].2),
+            "SSRC must be stable"
+        );
+        assert_eq!(headers[1].0, headers[0].0.wrapping_add(1));
+        assert_eq!(headers[2].0, headers[1].0.wrapping_add(1));
+        assert_eq!(headers[1].1, headers[0].1.wrapping_add(160));
+        assert_eq!(headers[2].1, headers[1].1.wrapping_add(160));
+    }
 }

@@ -193,6 +193,7 @@ pub fn parse_sdp(msg: &str) -> ParsedSdp {
     let mut direction = MediaDirection::SendRecv;
     let mut crypto_suites = Vec::new();
     let mut in_audio_media = false;
+    let mut seen_media = false;
 
     for line in msg.lines() {
         let trimmed = line.trim();
@@ -202,11 +203,14 @@ pub fn parse_sdp(msg: &str) -> ParsedSdp {
             if let Some(&ip) = parts.get(2) {
                 if in_audio_media {
                     media_ip = Some(ip.to_string());
-                } else {
+                } else if !seen_media {
                     session_ip = Some(ip.to_string());
                 }
+                // A c= inside a non-audio media section (e.g. video) belongs
+                // to that stream and must not redirect our audio.
             }
         } else if let Some(rest) = trimmed.strip_prefix("m=") {
+            seen_media = true;
             if rest.starts_with("audio") {
                 in_audio_media = true;
                 let parts: Vec<&str> = rest.split_whitespace().collect();
@@ -309,5 +313,99 @@ mod tests {
 
         let addr = parsed.rtp_addr().expect("valid socket addr");
         assert_eq!(addr.to_string(), "192.168.1.50:16384");
+    }
+
+    #[test]
+    fn build_sdp_round_trips_through_parse_sdp() {
+        let codecs = [Codec::Pcma, Codec::Pcmu, Codec::Opus];
+        let sdp = build_sdp("alice", "10.1.2.3", 40000, &codecs);
+
+        assert!(sdp.contains("m=audio 40000 RTP/AVP 8 0 111 101\r\n"));
+        assert!(sdp.contains("a=rtpmap:101 telephone-event/8000\r\n"));
+        assert!(sdp.contains("a=fmtp:111 "));
+        assert!(
+            sdp.lines().all(|l| !l.is_empty()),
+            "no blank lines inside SDP"
+        );
+        assert!(sdp.ends_with("\r\n"));
+
+        let parsed = parse_sdp(&sdp);
+        assert_eq!(parsed.media_ip.as_deref(), Some("10.1.2.3"));
+        assert_eq!(parsed.media_port, Some(40000));
+        assert_eq!(parsed.proto.as_deref(), Some("RTP/AVP"));
+        assert_eq!(parsed.direction, MediaDirection::SendRecv);
+        // Preference order is preserved.
+        assert_eq!(parsed.codecs, codecs.to_vec());
+    }
+
+    #[test]
+    fn build_sdp_single_omits_opus_fmtp() {
+        let sdp = build_sdp_single("bob", "192.0.2.1", 5004, Codec::Pcmu);
+        assert!(sdp.contains("m=audio 5004 RTP/AVP 0 101\r\n"));
+        assert!(!sdp.contains("a=fmtp"));
+        assert_eq!(parse_remote_codecs(&sdp), vec![Codec::Pcmu]);
+    }
+
+    #[test]
+    fn parse_sdp_reads_direction_and_falls_back_to_session_ip() {
+        for (attr, dir) in [
+            ("a=recvonly", MediaDirection::RecvOnly),
+            ("a=inactive", MediaDirection::Inactive),
+            ("a=sendonly", MediaDirection::SendOnly),
+        ] {
+            let sdp = format!("c=IN IP4 198.51.100.7\r\nm=audio 9000 RTP/AVP 0\r\n{attr}\r\n");
+            let parsed = parse_sdp(&sdp);
+            assert_eq!(parsed.direction, dir);
+            assert_eq!(parsed.media_ip.as_deref(), Some("198.51.100.7"));
+        }
+    }
+
+    #[test]
+    fn parse_sdp_ignores_attributes_of_non_audio_media() {
+        let sdp = "c=IN IP4 198.51.100.7\r\n\
+                   m=audio 9000 RTP/AVP 0\r\n\
+                   m=video 9002 RTP/AVP 96\r\n\
+                   c=IN IP4 203.0.113.9\r\n\
+                   a=inactive\r\n";
+        let parsed = parse_sdp(sdp);
+        assert_eq!(parsed.direction, MediaDirection::SendRecv);
+        assert_eq!(parsed.media_ip.as_deref(), Some("198.51.100.7"));
+        assert_eq!(parsed.media_port, Some(9000));
+    }
+
+    #[test]
+    fn parse_sdp_handles_missing_or_invalid_media() {
+        let parsed = parse_sdp("v=0\r\nc=IN IP4 1.2.3.4\r\n");
+        assert_eq!(parsed.media_port, None);
+        assert_eq!(parsed.rtp_addr(), None);
+        assert!(parsed.codecs.is_empty());
+
+        assert_eq!(
+            parse_sdp_connection("c=IN IP4 1.2.3.4\r\nm=audio 99999 RTP/AVP 0\r\n"),
+            None
+        );
+        assert_eq!(
+            parse_sdp_connection("c=IN IP4 not-an-ip\r\nm=audio 5000 RTP/AVP 0\r\n"),
+            None
+        );
+        assert_eq!(parse_sdp(""), ParsedSdp::default());
+    }
+
+    #[test]
+    fn parse_remote_codecs_skips_unknown_and_duplicate_payload_types() {
+        let sdp = "m=audio 8000 RTP/AVP 18 0 0 96 97\r\n\
+                   a=rtpmap:96 opus/48000/2\r\n\
+                   a=rtpmap:97 iLBC/8000\r\n";
+        assert_eq!(parse_remote_codecs(sdp), vec![Codec::Pcmu, Codec::Opus]);
+    }
+
+    #[test]
+    fn crypto_attribute_round_trips() {
+        let line = "a=crypto:2 AES_CM_128_HMAC_SHA1_32 inline:abcDEF123+/=";
+        let crypto = SrtpCrypto::parse(line).unwrap();
+        assert_eq!(crypto.tag, 2);
+        assert_eq!(crypto.to_sdp_attribute(), format!("{line}\r\n"));
+        assert!(SrtpCrypto::parse("a=crypto:x AES inline:k").is_none());
+        assert!(SrtpCrypto::parse("a=crypto:1 AES key").is_none());
     }
 }
