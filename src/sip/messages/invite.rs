@@ -19,44 +19,19 @@ pub fn build_invite(
     settings: &SipSettings,
     via_transport: &str,
 ) -> String {
-    let clean_target = crate::sip::utils::clean_uri(target_uri);
-    let sdp_len = sdp.len();
-    let from = settings.format_from(username, domain);
-    let extra = settings.extra_headers();
-    let scheme = if via_transport.to_uppercase() == "TLS" {
-        "sips"
-    } else {
-        "sip"
-    };
-
-    format!(
-        "INVITE {} SIP/2.0\r\n\
-         Via: SIP/2.0/{} {};branch={};rport\r\n\
-         Max-Forwards: 70\r\n\
-         From: {};tag={}\r\n\
-         To: <{}>\r\n\
-         Call-ID: {}\r\n\
-         CSeq: {} INVITE\r\n\
-         Contact: <{}:{}@{}>\r\n\
-         {}Content-Type: application/sdp\r\n\
-         Content-Length: {}\r\n\
-         \r\n\
-         {}",
-        clean_target,
-        via_transport.to_uppercase(),
+    invite_request(
+        target_uri,
+        username,
+        domain,
         local_addr,
-        branch,
-        from,
         local_tag,
-        clean_target,
+        branch,
         call_id,
         cseq,
-        scheme,
-        username,
-        local_addr,
-        extra,
-        sdp_len,
-        sdp
+        sdp,
+        None,
+        settings,
+        via_transport,
     )
 }
 
@@ -76,18 +51,52 @@ pub fn build_invite_with_auth(
     settings: &SipSettings,
     via_transport: &str,
 ) -> String {
-    let clean_target = crate::sip::utils::clean_uri(target_uri);
-    let uri = clean_target.to_string();
+    let uri = crate::sip::utils::clean_uri(target_uri).to_string();
     let auth_header =
         auth::build_authorization_header(username, password, challenge, "INVITE", &uri);
-    let sdp_len = sdp.len();
+    invite_request(
+        target_uri,
+        username,
+        domain,
+        local_addr,
+        local_tag,
+        branch,
+        call_id,
+        cseq,
+        sdp,
+        Some(&auth_header),
+        settings,
+        via_transport,
+    )
+}
+
+/// Shared INVITE builder; `auth_header` is a full `Authorization:` or
+/// `Proxy-Authorization:` line without the trailing CRLF.
+fn invite_request(
+    target_uri: &str,
+    username: &str,
+    domain: &str,
+    local_addr: &str,
+    local_tag: &str,
+    branch: &str,
+    call_id: &str,
+    cseq: u32,
+    sdp: &str,
+    auth_header: Option<&str>,
+    settings: &SipSettings,
+    via_transport: &str,
+) -> String {
+    let clean_target = crate::sip::utils::clean_uri(target_uri);
     let from = settings.format_from(username, domain);
     let extra = settings.extra_headers();
-    let scheme = if via_transport.to_uppercase() == "TLS" {
+    let scheme = if via_transport.eq_ignore_ascii_case("TLS") {
         "sips"
     } else {
         "sip"
     };
+    let auth_line = auth_header
+        .map(|h| format!("{}\r\n", h))
+        .unwrap_or_default();
 
     format!(
         "INVITE {} SIP/2.0\r\n\
@@ -98,7 +107,7 @@ pub fn build_invite_with_auth(
          Call-ID: {}\r\n\
          CSeq: {} INVITE\r\n\
          Contact: <{}:{}@{}>\r\n\
-         {}\r\n\
+         {}\
          {}Content-Type: application/sdp\r\n\
          Content-Length: {}\r\n\
          \r\n\
@@ -115,10 +124,10 @@ pub fn build_invite_with_auth(
         scheme,
         username,
         local_addr,
-        auth_header,
+        auth_line,
         extra,
-        sdp_len,
-        sdp,
+        sdp.len(),
+        sdp
     )
 }
 

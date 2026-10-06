@@ -396,11 +396,40 @@ impl Config {
         Self::load(path)
     }
 
-    /// Save configuration to a TOML file
+    /// Save configuration to a TOML file.
+    ///
+    /// Writes a sibling temporary file and renames it over `path`, so a crash
+    /// or full disk mid-write never leaves a truncated config behind. The file
+    /// holds SIP and dashboard passwords, so on Unix it is readable by the
+    /// owner only.
     pub fn save(&self, path: &str) -> anyhow::Result<()> {
         let content = toml::to_string_pretty(self)?;
-        fs::write(path, content)?;
-        Ok(())
+        let target = Path::new(path);
+        let file_name = target
+            .file_name()
+            .with_context(|| format!("Config path '{}' has no file name", path))?;
+        let mut tmp_name = std::ffi::OsString::from(".");
+        tmp_name.push(file_name);
+        tmp_name.push(".tmp");
+        let tmp = target.with_file_name(tmp_name);
+
+        let result = (|| -> anyhow::Result<()> {
+            use std::io::Write;
+            let mut file = fs::File::create(&tmp)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                file.set_permissions(fs::Permissions::from_mode(0o600))?;
+            }
+            file.write_all(content.as_bytes())?;
+            file.sync_all()?;
+            fs::rename(&tmp, target)?;
+            Ok(())
+        })();
+        if result.is_err() {
+            let _ = fs::remove_file(&tmp);
+        }
+        result.with_context(|| format!("Failed to save config to '{}'", path))
     }
 
     /// Validate configuration.
@@ -684,5 +713,95 @@ server = {:?}
         // a file that the next start refuses to load.
         let cfg = parse("accounts = []");
         assert!(cfg.validate().is_err());
+    }
+
+    fn temp_dir() -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("rsip-cfg-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn load_or_init_creates_a_valid_default_config() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        let path = path.to_str().unwrap();
+
+        let cfg = Config::load_or_init(path).expect("default config loads");
+        assert!(Path::new(path).exists());
+        assert!(!cfg.accounts.is_empty());
+        assert_eq!(cfg.web_port(), 9090);
+        // A second call reads the file instead of overwriting it.
+        assert_eq!(
+            Config::load_or_init(path).unwrap().accounts.len(),
+            cfg.accounts.len()
+        );
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn save_round_trips_and_leaves_no_temp_file() {
+        let dir = temp_dir();
+        let path = dir.join("config.toml");
+        let path_str = path.to_str().unwrap();
+
+        let mut cfg = parse(ONE_ACCOUNT);
+        cfg.accounts[0].display_name = Some("Çağrı Merkezi".into());
+        cfg.accounts[0].ivr_menu = Some(std::collections::HashMap::from([(
+            "1".to_string(),
+            "transfer:200".to_string(),
+        )]));
+        cfg.save(path_str).unwrap();
+        // Saving over an existing file replaces it.
+        cfg.save(path_str).unwrap();
+
+        let loaded = Config::load(path_str).unwrap();
+        assert_eq!(loaded.accounts.len(), 1);
+        assert_eq!(loaded.accounts[0].name, "main");
+        assert_eq!(
+            loaded.accounts[0].display_name.as_deref(),
+            Some("Çağrı Merkezi")
+        );
+        assert_eq!(
+            loaded.accounts[0].ivr_menu.as_ref().unwrap()["1"],
+            "transfer:200"
+        );
+
+        let leftovers: Vec<_> = fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(leftovers, vec![std::ffi::OsString::from("config.toml")]);
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(&path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600, "config with passwords must be private");
+        }
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn load_rejects_missing_and_invalid_files() {
+        let dir = temp_dir();
+        let path = dir.join("bad.toml");
+        assert!(Config::load(path.to_str().unwrap()).is_err());
+        fs::write(&path, "accounts = 5").unwrap();
+        assert!(Config::load(path.to_str().unwrap()).is_err());
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn web_credentials_fall_back_to_defaults() {
+        let cfg = parse(ONE_ACCOUNT);
+        assert_eq!(cfg.web_username(), "admin");
+        assert_eq!(cfg.web_password(), "admin");
+        let cfg = parse(&format!(
+            "[web]\nport = 8088\nusername = \"ops\"\npassword = \"pw\"\n{ONE_ACCOUNT}"
+        ));
+        assert_eq!(cfg.web_port(), 8088);
+        assert_eq!(cfg.web_username(), "ops");
+        assert_eq!(cfg.web_password(), "pw");
     }
 }

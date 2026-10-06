@@ -133,7 +133,14 @@ impl Service {
             web_password: self.web_password.clone(),
             session_token: uuid::Uuid::new_v4().to_string(),
             plugin_manager: self.plugin_manager.clone(),
+            login_limiter: web_server::LoginLimiter::default(),
         };
+        if self.web_username == "admin" && self.web_password == "admin" {
+            log::warn!(
+                "Web dashboard uses the default admin/admin credentials; \
+                 set [web] username and password in the config file"
+            );
+        }
         let web_port = self.web_port;
         tokio::spawn(async move {
             web_server::start_web_server(web_state, web_port).await;

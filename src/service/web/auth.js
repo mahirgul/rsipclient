@@ -148,6 +148,9 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
             localStorage.setItem('sip_session_token', data.token);
             initApp();
         } else {
+            errorToast.innerText = res.status === 429
+                ? "Too many failed attempts. Please wait a minute and try again."
+                : "Invalid username or password.";
             errorToast.style.display = 'block';
         }
     } catch (err) {
