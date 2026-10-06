@@ -30,7 +30,7 @@ pub fn parse_action(s: &str) -> IvrAction {
     } else if let Some(rest) = s.strip_prefix("record:") {
         // An optional trailing ":<seconds>" sets the duration, e.g.
         // "voicemail.wav:30". Only split when the suffix is a number, so that
-        // colons inside the path ("C:\\voicemail.wav") are left alone.
+        // colons inside the path ("C:\voicemail.wav") are left alone.
         match rest
             .rsplit_once(':')
             .and_then(|(path, secs)| Some((path, secs.trim().parse::<u64>().ok()?)))
