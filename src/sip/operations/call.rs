@@ -37,7 +37,7 @@ impl SipClient {
         let branch = self.new_branch();
         let cseq = self.next_cseq().await;
         let local = self.local_addr_str();
-        let configured_codec = Codec::from_str(&self.codec).unwrap_or(Codec::Pcmu);
+        let configured_codec = Codec::from_name(&self.codec).unwrap_or(Codec::Pcmu);
         let sdp_body = sdp::build_sdp_single(
             &self.username,
             &self.local_addr.ip().to_string(),
@@ -410,13 +410,11 @@ impl SipClient {
             .as_ref()
             .context("RTP receiver not started")?;
 
-        let mut seq = 0u16;
-        let mut timestamp = 0u32;
+        let codec = crate::rtp::codec::Codec::from_name(&self.codec)
+            .unwrap_or(crate::rtp::codec::Codec::Pcmu);
 
         for c in digits.chars() {
-            rtp_receiver
-                .send_dtmf_digit(c, target, &mut seq, &mut timestamp)
-                .await?;
+            rtp_receiver.send_dtmf_digit(c, target, codec).await?;
         }
         Ok(())
     }
@@ -429,15 +427,11 @@ impl SipClient {
             .as_ref()
             .context("RTP receiver not started")?;
 
-        let mut seq = 0u16;
-        let mut timestamp = 0u32;
-        let codec = crate::rtp::codec::Codec::from_str(&self.codec)
+        let codec = crate::rtp::codec::Codec::from_name(&self.codec)
             .unwrap_or(crate::rtp::codec::Codec::Pcmu);
 
         for c in digits.chars() {
-            rtp_receiver
-                .send_dtmf_inband(c, target, codec, &mut seq, &mut timestamp)
-                .await?;
+            rtp_receiver.send_dtmf_inband(c, target, codec).await?;
         }
         Ok(())
     }

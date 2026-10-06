@@ -67,9 +67,6 @@ pub async fn handle_audio_ws(socket: WebSocket, state: AppState, account_name: S
     // Loop 2: Receive browser microphone audio (binary frames of i16) and send it as RTP to caller
     let client_clone = client.clone();
     let mut recv_task = tokio::spawn(async move {
-        let mut seq = 0;
-        let mut timestamp = 0;
-
         while let Some(Ok(msg)) = ws_receiver.next().await {
             if let Message::Binary(bytes) = msg {
                 let mut samples = Vec::with_capacity(bytes.len() / 2);
@@ -83,9 +80,7 @@ pub async fn handle_audio_ws(socket: WebSocket, state: AppState, account_name: S
                     if let (Some(ref rtp_rec), Some(target)) =
                         (&cg.rtp_receiver, cg.remote_rtp_addr)
                     {
-                        let _ = rtp_rec
-                            .send_audio_samples(&samples, target, codec, &mut seq, &mut timestamp)
-                            .await;
+                        let _ = rtp_rec.send_audio_samples(&samples, target, codec).await;
                     }
                 }
             }

@@ -8,6 +8,8 @@ use std::sync::Arc;
 use tokio::net::UdpSocket;
 use tokio::sync::Mutex;
 
+use crate::rtp::codec::{AudioDecoder, AudioEncoder, Codec};
+
 /// Cap on buffered recording samples (30 minutes at 8 kHz).
 ///
 /// The receive loop appends every decoded packet, and a caller that never stops
@@ -27,6 +29,7 @@ const MAX_DTMF_BUFFERED: usize = 512;
 pub(crate) struct RtpPacket<'a> {
     pub payload_type: u8,
     pub sequence: u16,
+    pub timestamp: u32,
     pub payload: &'a [u8],
 }
 
@@ -73,8 +76,103 @@ pub(crate) fn parse_rtp(packet: &[u8]) -> Option<RtpPacket<'_>> {
     Some(RtpPacket {
         payload_type: packet[1] & 0x7F,
         sequence: u16::from_be_bytes([packet[2], packet[3]]),
+        timestamp: u32::from_be_bytes([packet[4], packet[5], packet[6], packet[7]]),
         payload: &packet[start..end],
     })
+}
+
+/// RTP payload type of RFC 2833 / RFC 4733 telephone-events.
+const TELEPHONE_EVENT_PT: u8 = 101;
+/// RTP payload type of RFC 3389 comfort noise.
+const COMFORT_NOISE_PT: u8 = 13;
+/// Packetization interval used for everything we send.
+const PTIME_MS: u32 = 20;
+
+/// Whether an incoming payload type carries audio for `codec`.
+///
+/// G.711 types are static, so anything else (comfort noise, stray streams)
+/// would decode to noise. Opus is dynamic and the peer may have picked any
+/// number in the dynamic range.
+fn is_audio_payload(pt: u8, codec: Codec) -> bool {
+    match codec {
+        Codec::Pcmu | Codec::Pcma => pt == codec.payload_type(),
+        Codec::Opus => (96..=127).contains(&pt) && pt != TELEPHONE_EVENT_PT,
+    }
+}
+
+/// State of the single outgoing RTP stream of a call.
+///
+/// Audio, RFC 2833 events and in-band DTMF all go out on one socket, so they
+/// must share one SSRC with continuous sequence numbers and timestamps;
+/// peers otherwise see a new stream on every packet and reset their jitter
+/// buffers.
+struct TxStream {
+    ssrc: u32,
+    seq: u16,
+    timestamp: u32,
+    encoder: Option<AudioEncoder>,
+    /// Samples waiting to fill a whole packet.
+    pending: Vec<i16>,
+}
+
+impl TxStream {
+    fn new() -> Self {
+        Self {
+            ssrc: rand::random(),
+            seq: rand::random(),
+            timestamp: rand::random(),
+            encoder: None,
+            pending: Vec::new(),
+        }
+    }
+
+    /// The encoder for `codec`, recreated if the codec changed.
+    fn encoder(&mut self, codec: Codec) -> Result<&mut AudioEncoder> {
+        if self.encoder.as_ref().map(|e| e.codec()) != Some(codec) {
+            self.encoder = Some(AudioEncoder::new(codec)?);
+            self.pending.clear();
+        }
+        Ok(self.encoder.as_mut().expect("encoder was just set"))
+    }
+
+    /// Build a packet with the current sequence number and `timestamp`, then
+    /// advance the sequence number.
+    fn packet(
+        &mut self,
+        payload_type: u8,
+        marker: bool,
+        timestamp: u32,
+        payload: &[u8],
+    ) -> Vec<u8> {
+        let mut packet = Vec::with_capacity(12 + payload.len());
+        packet.push(0x80); // V=2, P=0, X=0, CC=0
+        packet.push(payload_type | if marker { 0x80 } else { 0 });
+        packet.extend_from_slice(&self.seq.to_be_bytes());
+        packet.extend_from_slice(&timestamp.to_be_bytes());
+        packet.extend_from_slice(&self.ssrc.to_be_bytes());
+        packet.extend_from_slice(payload);
+        self.seq = self.seq.wrapping_add(1);
+        packet
+    }
+
+    /// Encode one audio frame and build its packet, advancing the timestamp.
+    fn audio_packet(&mut self, codec: Codec, frame: &[i16]) -> Result<Vec<u8>> {
+        let payload = self.encoder(codec)?.encode(frame)?;
+        let ts = self.timestamp;
+        // Opus pads short frames, so advance by what was actually encoded.
+        let advance = if codec == Codec::Opus {
+            frame.len().max(samples_per_packet(codec))
+        } else {
+            frame.len()
+        };
+        self.timestamp = self.timestamp.wrapping_add(advance as u32);
+        Ok(self.packet(codec.payload_type(), false, ts, &payload))
+    }
+}
+
+/// Samples in one packet of `codec` at [`PTIME_MS`].
+fn samples_per_packet(codec: Codec) -> usize {
+    (codec.clock_rate() * PTIME_MS / 1000) as usize
 }
 
 /// Detected DTMF event
@@ -105,6 +203,8 @@ pub struct RtpReceiver {
     recording_active: Arc<Mutex<bool>>,
     /// Last sequence number seen
     last_seq: Arc<Mutex<Option<u16>>>,
+    /// Outgoing stream (SSRC, sequence, timestamp, encoder)
+    tx: Arc<Mutex<TxStream>>,
 }
 
 impl RtpReceiver {
@@ -120,6 +220,7 @@ impl RtpReceiver {
             recording: Arc::new(Mutex::new(Vec::new())),
             recording_active: Arc::new(Mutex::new(false)),
             last_seq: Arc::new(Mutex::new(None)),
+            tx: Arc::new(Mutex::new(TxStream::new())),
         })
     }
 
@@ -148,11 +249,7 @@ impl RtpReceiver {
 
     /// Start background receive loop (non-blocking).
     /// Spawns a task that continuously reads RTP packets and processes them.
-    pub fn start(
-        &self,
-        codec: crate::rtp::codec::Codec,
-        audio_tx: Option<tokio::sync::broadcast::Sender<Vec<i16>>>,
-    ) {
+    pub fn start(&self, codec: Codec, audio_tx: Option<tokio::sync::broadcast::Sender<Vec<i16>>>) {
         let socket = self.socket.clone();
         let stop_flag = self.stop_flag.clone();
         let dtmf_buf = self.dtmf_buffer.clone();
@@ -169,6 +266,17 @@ impl RtpReceiver {
             // peers routinely send from a different port than they advertise.
             let mut peer: Option<SocketAddr> = None;
             let mut recording_full = false;
+            // Every packet of one telephone-event carries the same timestamp,
+            // and the end packet is sent three times. Keying on the timestamp
+            // keeps those as one digit while still accepting "11".
+            let mut last_dtmf_timestamp: Option<u32> = None;
+            let mut decoder = match AudioDecoder::new(codec) {
+                Ok(d) => d,
+                Err(e) => {
+                    log::error!("Cannot create {:?} decoder: {}", codec, e);
+                    return;
+                }
+            };
             loop {
                 // Check stop signal before each recv
                 if stop_flag.load(Ordering::Relaxed) {
@@ -202,15 +310,16 @@ impl RtpReceiver {
                             None => continue,
                         };
 
-                        if rtp.payload_type == 101 {
+                        if rtp.payload_type == TELEPHONE_EVENT_PT {
                             // RFC 2833 telephone-event
                             if let Some(dtmf) = parse_dtmf(rtp.payload) {
                                 let mut digits = dtmf_buf.lock().await;
                                 let mut events = dtmf_events.lock().await;
                                 if dtmf.end
                                     && !dtmf.digit.is_whitespace()
-                                    && !digits.ends_with(dtmf.digit)
+                                    && last_dtmf_timestamp != Some(rtp.timestamp)
                                 {
+                                    last_dtmf_timestamp = Some(rtp.timestamp);
                                     if digits.chars().count() >= MAX_DTMF_BUFFERED {
                                         digits.remove(0);
                                     }
@@ -221,9 +330,13 @@ impl RtpReceiver {
                                 }
                                 events.push(dtmf);
                             }
+                        } else if rtp.payload_type == COMFORT_NOISE_PT
+                            || !is_audio_payload(rtp.payload_type, codec)
+                        {
+                            continue;
                         } else {
                             // Audio packet — decode first
-                            if let Ok(samples) = codec.decode(rtp.payload) {
+                            if let Ok(samples) = decoder.decode(rtp.payload) {
                                 let active = *recording_active.lock().await;
                                 if active {
                                     let mut rec = recording.lock().await;
@@ -290,29 +403,25 @@ impl RtpReceiver {
         self.recording.lock().await.clone()
     }
 
-    /// Send raw PCM samples as RTP to the target address
+    /// Send linear PCM at the codec's clock rate as RTP to `target`.
+    ///
+    /// Input of any length is split into standard 20 ms packets; a partial
+    /// packet is kept until the next call fills it.
     pub async fn send_audio_samples(
         &self,
         samples: &[i16],
         target: SocketAddr,
-        codec: crate::rtp::codec::Codec,
-        seq: &mut u16,
-        timestamp: &mut u32,
+        codec: Codec,
     ) -> Result<()> {
-        let payload = codec.encode(samples)?;
-        let ssrc: u32 = rand::random();
-
-        let mut packet = Vec::with_capacity(12 + payload.len());
-        packet.push(0x80); // V=2, P=0, X=0, CC=0
-        packet.push(codec.payload_type());
-        packet.extend_from_slice(&seq.to_be_bytes());
-        packet.extend_from_slice(&timestamp.to_be_bytes());
-        packet.extend_from_slice(&ssrc.to_be_bytes());
-        packet.extend_from_slice(&payload);
-
-        self.socket.send_to(&packet, target).await?;
-        *seq = seq.wrapping_add(1);
-        *timestamp = timestamp.wrapping_add(samples.len() as u32);
+        let frame = samples_per_packet(codec);
+        let mut tx = self.tx.lock().await;
+        tx.encoder(codec)?;
+        tx.pending.extend_from_slice(samples);
+        while tx.pending.len() >= frame {
+            let chunk: Vec<i16> = tx.pending.drain(..frame).collect();
+            let packet = tx.audio_packet(codec, &chunk)?;
+            self.socket.send_to(&packet, target).await?;
+        }
         Ok(())
     }
 
@@ -321,8 +430,7 @@ impl RtpReceiver {
         &self,
         digit: char,
         target: SocketAddr,
-        seq: &mut u16,
-        timestamp: &mut u32,
+        codec: Codec,
     ) -> Result<()> {
         let event = match digit {
             '0'..='9' => digit as u8 - b'0',
@@ -336,59 +444,47 @@ impl RtpReceiver {
             }
         };
 
-        let ssrc: u32 = rand::random();
-        let event_timestamp = *timestamp;
+        let mut tx = self.tx.lock().await;
+        // All packets of one event share the timestamp of its start.
+        let event_timestamp = tx.timestamp;
+        let event_payload = |end: bool, duration: u16| {
+            let [hi, lo] = duration.to_be_bytes();
+            // Volume 10 dBm0; E bit marks the end of the event.
+            [event, if end { 0x8A } else { 0x0A }, hi, lo]
+        };
 
-        // Send 3 intermediate packets (duration = 160, 320, 480)
-        for step in 1..=3 {
-            let duration = (step * 160) as u16;
-            let mut payload = vec![0u8; 4];
-            payload[0] = event;
-            payload[1] = 0x0A; // E=0, R=0, Volume=10
-            payload[2] = (duration >> 8) as u8;
-            payload[3] = (duration & 0xFF) as u8;
-
-            let mut packet = Vec::with_capacity(12 + payload.len());
-            packet.push(0x80); // V=2, P=0, X=0, CC=0
-            packet.push(101); // Payload type for telephone-event
-            packet.extend_from_slice(&seq.to_be_bytes());
-            packet.extend_from_slice(&event_timestamp.to_be_bytes());
-            packet.extend_from_slice(&ssrc.to_be_bytes());
-            packet.extend_from_slice(&payload);
-
+        // Three updates 20 ms apart (durations in 8 kHz telephone-event units),
+        // the first one carrying the marker bit (RFC 4733 §2.5.1.3).
+        for step in 1..=3u16 {
+            let packet = tx.packet(
+                TELEPHONE_EVENT_PT,
+                step == 1,
+                event_timestamp,
+                &event_payload(false, step * 160),
+            );
             let _ = self.socket.send_to(&packet, target).await;
-            *seq = seq.wrapping_add(1);
-
-            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(PTIME_MS as u64)).await;
         }
 
-        // Send 3 end packets (E=1, same duration)
-        let final_duration = 480u16;
-        for _ in 1..=3 {
-            let mut payload = vec![0u8; 4];
-            payload[0] = event;
-            payload[1] = 0x8A; // E=1, R=0, Volume=10
-            payload[2] = (final_duration >> 8) as u8;
-            payload[3] = (final_duration & 0xFF) as u8;
-
-            let mut packet = Vec::with_capacity(12 + payload.len());
-            packet.push(0x80); // V=2, P=0, X=0, CC=0
-            packet.push(101); // Payload type for telephone-event
-            packet.extend_from_slice(&seq.to_be_bytes());
-            packet.extend_from_slice(&event_timestamp.to_be_bytes());
-            packet.extend_from_slice(&ssrc.to_be_bytes());
-            packet.extend_from_slice(&payload);
-
+        // The end packet is sent three times for robustness against loss.
+        for _ in 0..3 {
+            let packet = tx.packet(
+                TELEPHONE_EVENT_PT,
+                false,
+                event_timestamp,
+                &event_payload(true, 480),
+            );
             let _ = self.socket.send_to(&packet, target).await;
-            *seq = seq.wrapping_add(1);
         }
 
-        // Increment the main timestamp by the event duration (plus standard gap)
-        *timestamp = timestamp.wrapping_add(800);
+        // Advance the media clock by the event plus the inter-digit gap.
+        let elapsed_ms = 60 + 100;
+        tx.timestamp = tx
+            .timestamp
+            .wrapping_add(codec.clock_rate() / 1000 * elapsed_ms);
+        drop(tx);
 
-        // Wait a short gap between digits
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-
         Ok(())
     }
 
@@ -397,13 +493,10 @@ impl RtpReceiver {
         &self,
         digit: char,
         target: SocketAddr,
-        codec: crate::rtp::codec::Codec,
-        seq: &mut u16,
-        timestamp: &mut u32,
+        codec: Codec,
     ) -> Result<()> {
         let duration_ms = 160;
-        let sample_rate = 8000;
-        let samples = match synthesize_dtmf_pcm(digit, duration_ms, sample_rate) {
+        let samples = match synthesize_dtmf_pcm(digit, duration_ms, codec.clock_rate() as usize) {
             Some(s) => s,
             None => {
                 log::warn!("Invalid DTMF digit for in-band synthesis: '{}'", digit);
@@ -411,43 +504,14 @@ impl RtpReceiver {
             }
         };
 
-        let ssrc: u32 = rand::random();
-        let chunk_size = 160;
-
-        for chunk in samples.chunks(chunk_size) {
-            let encoded = codec.encode(chunk)?;
-            let mut packet = Vec::with_capacity(12 + encoded.len());
-            packet.push(0x80);
-            packet.push(codec.payload_type());
-            packet.extend_from_slice(&seq.to_be_bytes());
-            packet.extend_from_slice(&timestamp.to_be_bytes());
-            packet.extend_from_slice(&ssrc.to_be_bytes());
-            packet.extend_from_slice(&encoded);
-
+        let frame = samples_per_packet(codec);
+        // The tone followed by 40 ms of silence as an inter-digit gap.
+        let silence = vec![0i16; frame * 2];
+        let mut tx = self.tx.lock().await;
+        for chunk in samples.chunks(frame).chain(silence.chunks(frame)) {
+            let packet = tx.audio_packet(codec, chunk)?;
             let _ = self.socket.send_to(&packet, target).await;
-            *seq = seq.wrapping_add(1);
-            *timestamp = timestamp.wrapping_add(chunk.len() as u32);
-
-            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-        }
-
-        // Send 40ms of silence gap (2 packets) after digit
-        let silence = vec![0i16; 160];
-        for _ in 0..2 {
-            let encoded = codec.encode(&silence)?;
-            let mut packet = Vec::with_capacity(12 + encoded.len());
-            packet.push(0x80);
-            packet.push(codec.payload_type());
-            packet.extend_from_slice(&seq.to_be_bytes());
-            packet.extend_from_slice(&timestamp.to_be_bytes());
-            packet.extend_from_slice(&ssrc.to_be_bytes());
-            packet.extend_from_slice(&encoded);
-
-            let _ = self.socket.send_to(&packet, target).await;
-            *seq = seq.wrapping_add(1);
-            *timestamp = timestamp.wrapping_add(160);
-
-            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(PTIME_MS as u64)).await;
         }
 
         Ok(())
@@ -664,5 +728,180 @@ mod tests {
 
         // Invalid digit returns None
         assert!(synthesize_dtmf_pcm('Z', 160, 8000).is_none());
+    }
+
+    /// Fields of one received RTP packet.
+    #[derive(Debug)]
+    struct Received {
+        marker: bool,
+        payload_type: u8,
+        seq: u16,
+        timestamp: u32,
+        ssrc: u32,
+        payload: Vec<u8>,
+    }
+
+    async fn receive_all(sock: &UdpSocket) -> Vec<Received> {
+        let mut out = Vec::new();
+        let mut buf = [0u8; 2048];
+        while let Ok(Ok(n)) =
+            tokio::time::timeout(std::time::Duration::from_millis(150), sock.recv(&mut buf)).await
+        {
+            let p = &buf[..n];
+            out.push(Received {
+                marker: p[1] & 0x80 != 0,
+                payload_type: p[1] & 0x7F,
+                seq: u16::from_be_bytes([p[2], p[3]]),
+                timestamp: u32::from_be_bytes([p[4], p[5], p[6], p[7]]),
+                ssrc: u32::from_be_bytes([p[8], p[9], p[10], p[11]]),
+                payload: p[12..].to_vec(),
+            });
+        }
+        out
+    }
+
+    async fn pair() -> (RtpReceiver, UdpSocket, SocketAddr) {
+        let rx = RtpReceiver::bind(0).await.unwrap();
+        let peer = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let addr = peer.local_addr().unwrap();
+        (rx, peer, addr)
+    }
+
+    fn assert_one_continuous_stream(pkts: &[Received]) {
+        for w in pkts.windows(2) {
+            assert_eq!(w[0].ssrc, w[1].ssrc, "SSRC changed mid-stream");
+            assert_eq!(w[1].seq, w[0].seq.wrapping_add(1), "sequence gap");
+        }
+    }
+
+    #[tokio::test]
+    async fn audio_is_split_into_20ms_packets_and_remainder_is_kept() {
+        let (rx, peer, target) = pair().await;
+        // 2048 samples, as the browser sends them = 12 packets + 128 left over.
+        rx.send_audio_samples(&[100i16; 2048], target, Codec::Pcmu)
+            .await
+            .unwrap();
+        // 32 more samples complete the 13th packet.
+        rx.send_audio_samples(&[100i16; 32], target, Codec::Pcmu)
+            .await
+            .unwrap();
+
+        let pkts = receive_all(&peer).await;
+        assert_eq!(pkts.len(), 13);
+        assert!(pkts
+            .iter()
+            .all(|p| p.payload.len() == 160 && p.payload_type == 0));
+        assert_one_continuous_stream(&pkts);
+        for w in pkts.windows(2) {
+            assert_eq!(w[1].timestamp, w[0].timestamp.wrapping_add(160));
+        }
+    }
+
+    #[tokio::test]
+    async fn dtmf_events_share_the_audio_stream() {
+        let (rx, peer, target) = pair().await;
+        rx.send_audio_samples(&[0i16; 160], target, Codec::Pcma)
+            .await
+            .unwrap();
+        rx.send_dtmf_digit('5', target, Codec::Pcma).await.unwrap();
+        rx.send_dtmf_digit('x', target, Codec::Pcma).await.unwrap(); // ignored
+        rx.send_audio_samples(&[0i16; 160], target, Codec::Pcma)
+            .await
+            .unwrap();
+
+        let pkts = receive_all(&peer).await;
+        assert_eq!(pkts.len(), 1 + 6 + 1);
+        assert_one_continuous_stream(&pkts);
+
+        let events = &pkts[1..7];
+        assert!(events.iter().all(|p| p.payload_type == TELEPHONE_EVENT_PT));
+        assert!(
+            events[0].marker,
+            "first event packet carries the marker bit"
+        );
+        assert!(events[1..].iter().all(|p| !p.marker));
+        // One event = one timestamp: the start of the event.
+        assert!(events.iter().all(|p| p.timestamp == events[0].timestamp));
+        assert_eq!(events[0].timestamp, pkts[0].timestamp.wrapping_add(160));
+        assert!(events.iter().all(|p| p.payload[0] == 5));
+        assert_eq!(
+            events.iter().filter(|p| p.payload[1] & 0x80 != 0).count(),
+            3
+        );
+        // Audio resumes later on the media clock.
+        assert!(pkts[7].timestamp.wrapping_sub(events[0].timestamp) >= 160 * 8);
+    }
+
+    #[tokio::test]
+    async fn inband_dtmf_works_for_opus() {
+        let (rx, peer, target) = pair().await;
+        rx.send_dtmf_inband('#', target, Codec::Opus).await.unwrap();
+        let pkts = receive_all(&peer).await;
+        // 160 ms tone + 40 ms gap at 20 ms per packet.
+        assert_eq!(pkts.len(), 10);
+        assert!(pkts.iter().all(|p| p.payload_type == 111));
+        assert_one_continuous_stream(&pkts);
+        assert_eq!(pkts[1].timestamp, pkts[0].timestamp.wrapping_add(960));
+    }
+
+    /// Send a telephone-event packet from `from` to the receiver.
+    async fn send_event(from: &UdpSocket, to: SocketAddr, seq: u16, ts: u32, digit: u8, end: bool) {
+        let mut p = vec![0x80, TELEPHONE_EVENT_PT];
+        p.extend_from_slice(&seq.to_be_bytes());
+        p.extend_from_slice(&ts.to_be_bytes());
+        p.extend_from_slice(&7u32.to_be_bytes());
+        p.extend_from_slice(&[digit, if end { 0x8A } else { 0x0A }, 1, 0xE0]);
+        from.send_to(&p, to).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn repeated_digits_are_not_collapsed() {
+        let rx = RtpReceiver::bind(0).await.unwrap();
+        let port = rx.socket().local_addr().unwrap().port();
+        let to: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
+        rx.start(Codec::Pcmu, None);
+
+        let peer = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let mut seq = 0;
+        // "1", "1", "2": each event sends updates then a triple end packet.
+        for (ts, digit) in [(1000u32, 1u8), (3000, 1), (5000, 2)] {
+            for end in [false, false, true, true, true] {
+                seq += 1;
+                send_event(&peer, to, seq, ts, digit, end).await;
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        assert_eq!(rx.take_dtmf().await, "112");
+        rx.stop();
+    }
+
+    #[tokio::test]
+    async fn non_audio_payload_types_are_not_recorded() {
+        let rx = RtpReceiver::bind(0).await.unwrap();
+        let port = rx.socket().local_addr().unwrap().port();
+        let to: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
+        rx.start(Codec::Pcmu, None);
+        rx.start_recording().await;
+
+        let peer = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        for (seq, pt) in [(1u16, 0u8), (2, COMFORT_NOISE_PT), (3, 8), (4, 0)] {
+            let mut p = header(0x80, pt, seq);
+            p.extend_from_slice(&[0xFF; 160]);
+            peer.send_to(&p, to).await.unwrap();
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        assert_eq!(rx.stop_recording().await.len(), 320);
+        rx.stop();
+    }
+
+    #[test]
+    fn audio_payload_filter() {
+        assert!(is_audio_payload(0, Codec::Pcmu));
+        assert!(!is_audio_payload(8, Codec::Pcmu));
+        assert!(is_audio_payload(8, Codec::Pcma));
+        assert!(is_audio_payload(111, Codec::Opus));
+        assert!(is_audio_payload(96, Codec::Opus));
+        assert!(!is_audio_payload(TELEPHONE_EVENT_PT, Codec::Opus));
+        assert!(!is_audio_payload(0, Codec::Opus));
     }
 }

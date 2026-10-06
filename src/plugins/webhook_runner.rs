@@ -98,3 +98,9 @@ impl WebhookRunner {
         Ok(action_res)
     }
 }
+
+impl Default for WebhookRunner {
+    fn default() -> Self {
+        Self::new()
+    }
+}

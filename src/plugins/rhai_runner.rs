@@ -162,6 +162,12 @@ impl RhaiRunner {
 
 use std::collections::HashMap;
 
+impl Default for RhaiRunner {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

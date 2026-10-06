@@ -86,9 +86,10 @@ pub async fn send_wav_rtp_on_socket(
         samples.to_vec()
     };
 
+    let mut encoder = codec::AudioEncoder::new(codec)?;
     let start_time = tokio::time::Instant::now();
     for (i, chunk) in resampled.chunks(samples_per_packet).enumerate() {
-        let payload: Vec<u8> = codec.encode(chunk)?;
+        let payload: Vec<u8> = encoder.encode(chunk)?;
 
         let mut packet = Vec::with_capacity(12 + payload.len());
         packet.push(0x80); // V=2, P=0, X=0, CC=0

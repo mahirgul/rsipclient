@@ -5,7 +5,7 @@
 
 pub(crate) mod commands_server;
 mod handlers;
-pub(crate) mod logger;
+pub mod logger;
 pub(crate) mod managed_client;
 pub(crate) mod watcher;
 pub(crate) mod web_handlers;

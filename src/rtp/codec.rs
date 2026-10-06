@@ -15,7 +15,7 @@ pub enum Codec {
 
 impl Codec {
     /// Parse from config string: "pcmu", "pcma", "opus"
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn from_name(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "pcmu" | "g711u" | "mulaw" => Some(Codec::Pcmu),
             "pcma" | "g711a" | "alaw" => Some(Codec::Pcma),
@@ -183,24 +183,124 @@ pub fn alaw_to_linear(alaw: u8) -> i16 {
 
 // ── Opus ───────────────────────────────────────────────────
 
-/// Encode audio with Opus.
-pub fn opus_encode(chunk: &[i16]) -> Result<Vec<u8>> {
-    use opus::{Application, Channels, Encoder};
-    let mut encoder = Encoder::new(48000, Channels::Mono, Application::Audio)?;
-    let mut output = vec![0u8; 4000];
-    let n = encoder.encode(chunk, &mut output)?;
-    output.truncate(n);
-    Ok(output)
+/// Frame sizes (in samples at 48 kHz) that Opus accepts: 2.5 to 60 ms.
+const OPUS_FRAME_SIZES: [usize; 6] = [120, 240, 480, 960, 1920, 2880];
+/// Largest frame Opus can decode (120 ms at 48 kHz).
+const OPUS_MAX_DECODED: usize = 5760;
+/// Upper bound on one encoded Opus packet.
+const OPUS_MAX_PACKET: usize = 4000;
+
+/// Zero-pad `chunk` up to the next frame size Opus accepts.
+///
+/// The last chunk of a stream is rarely a whole frame, and Opus rejects any
+/// length that is not one of its fixed frame sizes.
+fn opus_frame(chunk: &[i16]) -> Result<std::borrow::Cow<'_, [i16]>> {
+    let Some(&size) = OPUS_FRAME_SIZES.iter().find(|&&s| s >= chunk.len()) else {
+        anyhow::bail!(
+            "Opus frame too long: {} samples (max {})",
+            chunk.len(),
+            OPUS_FRAME_SIZES[OPUS_FRAME_SIZES.len() - 1]
+        );
+    };
+    if size == chunk.len() {
+        return Ok(std::borrow::Cow::Borrowed(chunk));
+    }
+    let mut padded = chunk.to_vec();
+    padded.resize(size, 0);
+    Ok(std::borrow::Cow::Owned(padded))
 }
 
-/// Decode audio with Opus.
+/// Encode audio with a one-off Opus encoder.
+///
+/// Prefer [`AudioEncoder`] for streams: Opus is a predictive codec, and a
+/// fresh encoder per packet both wastes CPU and degrades quality.
+pub fn opus_encode(chunk: &[i16]) -> Result<Vec<u8>> {
+    AudioEncoder::new(Codec::Opus)?.encode(chunk)
+}
+
+/// Decode audio with a one-off Opus decoder.
+///
+/// Prefer [`AudioDecoder`] for streams, for the same reason as [`opus_encode`].
 pub fn opus_decode(payload: &[u8]) -> Result<Vec<i16>> {
-    use opus::{Channels, Decoder};
-    let mut decoder = Decoder::new(48000, Channels::Mono)?;
-    let mut output = vec![0i16; 5760]; // Max frame size
-    let n = decoder.decode(payload, &mut output, false)?;
-    output.truncate(n);
-    Ok(output)
+    AudioDecoder::new(Codec::Opus)?.decode(payload)
+}
+
+// ── Stateful per-stream coders ─────────────────────────────
+
+/// Encoder for one outgoing audio stream.
+///
+/// G.711 is stateless, but Opus keeps prediction state between frames, so one
+/// encoder must live for the whole stream.
+pub struct AudioEncoder {
+    codec: Codec,
+    opus: Option<opus::Encoder>,
+}
+
+impl AudioEncoder {
+    pub fn new(codec: Codec) -> Result<Self> {
+        let opus = match codec {
+            Codec::Opus => Some(opus::Encoder::new(
+                48000,
+                opus::Channels::Mono,
+                opus::Application::Voip,
+            )?),
+            Codec::Pcmu | Codec::Pcma => None,
+        };
+        Ok(Self { codec, opus })
+    }
+
+    pub fn codec(&self) -> Codec {
+        self.codec
+    }
+
+    /// Encode one frame of linear PCM at the codec's clock rate.
+    ///
+    /// Opus input shorter than a valid frame is zero-padded.
+    pub fn encode(&mut self, chunk: &[i16]) -> Result<Vec<u8>> {
+        match self.opus.as_mut() {
+            Some(encoder) => {
+                let frame = opus_frame(chunk)?;
+                let mut output = vec![0u8; OPUS_MAX_PACKET];
+                let n = encoder.encode(&frame, &mut output)?;
+                output.truncate(n);
+                Ok(output)
+            }
+            None => self.codec.encode(chunk),
+        }
+    }
+}
+
+/// Decoder for one incoming audio stream (see [`AudioEncoder`]).
+pub struct AudioDecoder {
+    codec: Codec,
+    opus: Option<opus::Decoder>,
+}
+
+impl AudioDecoder {
+    pub fn new(codec: Codec) -> Result<Self> {
+        let opus = match codec {
+            Codec::Opus => Some(opus::Decoder::new(48000, opus::Channels::Mono)?),
+            Codec::Pcmu | Codec::Pcma => None,
+        };
+        Ok(Self { codec, opus })
+    }
+
+    pub fn codec(&self) -> Codec {
+        self.codec
+    }
+
+    /// Decode one RTP payload to linear PCM at the codec's clock rate.
+    pub fn decode(&mut self, payload: &[u8]) -> Result<Vec<i16>> {
+        match self.opus.as_mut() {
+            Some(decoder) => {
+                let mut output = vec![0i16; OPUS_MAX_DECODED];
+                let n = decoder.decode(payload, &mut output, false)?;
+                output.truncate(n);
+                Ok(output)
+            }
+            None => self.codec.decode(payload),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -305,17 +405,65 @@ mod tests {
     #[test]
     fn codec_names_and_payload_types_round_trip() {
         for codec in [Codec::Pcmu, Codec::Pcma, Codec::Opus] {
-            assert_eq!(Codec::from_str(codec.to_config_str()), Some(codec));
+            assert_eq!(Codec::from_name(codec.to_config_str()), Some(codec));
             assert_eq!(Codec::from_payload_type(codec.payload_type()), Some(codec));
             assert!(codec
                 .rtpmap()
                 .starts_with(&codec.payload_type().to_string()));
         }
-        assert_eq!(Codec::from_str("G711U"), Some(Codec::Pcmu));
-        assert_eq!(Codec::from_str("alaw"), Some(Codec::Pcma));
-        assert_eq!(Codec::from_str("g729"), None);
+        assert_eq!(Codec::from_name("G711U"), Some(Codec::Pcmu));
+        assert_eq!(Codec::from_name("alaw"), Some(Codec::Pcma));
+        assert_eq!(Codec::from_name("g729"), None);
         assert_eq!(Codec::from_payload_type(18), None);
         assert_eq!(Codec::Opus.clock_rate(), 48000);
         assert_eq!(Codec::Pcma.clock_rate(), 8000);
+    }
+
+    #[test]
+    fn opus_pads_short_frames_and_rejects_oversized_ones() {
+        // 100 samples is not an Opus frame size; it is padded to 120.
+        let encoded = Codec::Opus.encode(&[500i16; 100]).unwrap();
+        assert_eq!(Codec::Opus.decode(&encoded).unwrap().len(), 120);
+        // The tail of a 20 ms stream padded to a full 20 ms frame.
+        let encoded = Codec::Opus.encode(&[500i16; 700]).unwrap();
+        assert_eq!(Codec::Opus.decode(&encoded).unwrap().len(), 960);
+        assert!(Codec::Opus.encode(&vec![0i16; 2881]).is_err());
+    }
+
+    #[test]
+    fn stateful_opus_stream_reproduces_a_tone() {
+        let tone: Vec<i16> = (0..960 * 10)
+            .map(|i| {
+                ((i as f32 * 2.0 * std::f32::consts::PI * 440.0 / 48000.0).sin() * 10000.0) as i16
+            })
+            .collect();
+        let mut enc = AudioEncoder::new(Codec::Opus).unwrap();
+        let mut dec = AudioDecoder::new(Codec::Opus).unwrap();
+        assert_eq!(enc.codec(), Codec::Opus);
+        assert_eq!(dec.codec(), Codec::Opus);
+
+        let mut out = Vec::new();
+        for frame in tone.chunks(960) {
+            let packet = enc.encode(frame).unwrap();
+            out.extend(dec.decode(&packet).unwrap());
+        }
+        assert_eq!(out.len(), tone.len());
+        // After the codec has settled, the decoded energy matches the input.
+        let energy =
+            |s: &[i16]| s.iter().map(|&x| (x as f64).powi(2)).sum::<f64>() / s.len() as f64;
+        let ratio = energy(&out[4800..]) / energy(&tone[4800..]);
+        assert!((0.5..2.0).contains(&ratio), "energy ratio {ratio}");
+    }
+
+    #[test]
+    fn stateful_g711_coders_match_the_stateless_path() {
+        let pcm: Vec<i16> = (0..160).map(|i| (i * 150 - 12000) as i16).collect();
+        for codec in [Codec::Pcmu, Codec::Pcma] {
+            let mut enc = AudioEncoder::new(codec).unwrap();
+            let mut dec = AudioDecoder::new(codec).unwrap();
+            let packet = enc.encode(&pcm).unwrap();
+            assert_eq!(packet, codec.encode(&pcm).unwrap());
+            assert_eq!(dec.decode(&packet).unwrap(), codec.decode(&packet).unwrap());
+        }
     }
 }

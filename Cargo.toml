@@ -12,6 +12,16 @@ keywords = ["sip", "voip", "telephony", "cli", "ivr"]
 categories = ["network-programming", "command-line-utilities"]
 authors = ["Mahir Gül <mahirgul@gmail.com>"]
 
+[lib]
+name = "rsipclient"
+path = "src/lib.rs"
+
+[[bin]]
+name = "rsipclient"
+path = "src/main.rs"
+# The library carries the documentation; documenting both would collide.
+doc = false
+
 [features]
 default = []
 

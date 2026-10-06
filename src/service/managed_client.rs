@@ -101,7 +101,7 @@ pub async fn create_managed_client(account: &Account) -> Result<ManagedClient> {
         _ => AuthMethod::Md5,
     };
 
-    let codec = Codec::from_str(account.codec.as_deref().unwrap_or("pcmu")).unwrap_or(Codec::Pcmu);
+    let codec = Codec::from_name(account.codec.as_deref().unwrap_or("pcmu")).unwrap_or(Codec::Pcmu);
 
     let sip_settings = SipSettings::from_config(
         account.display_name.clone(),

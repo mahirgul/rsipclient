@@ -1,5 +1,4 @@
 //! SIP CLI Client - Service & IPC Edition
-#![allow(clippy::too_many_arguments)]
 //!
 //! Service mode:
 //!   cargo run -- -c config.toml service
@@ -11,22 +10,12 @@
 //!   cargo run -- -c config.toml status
 //!   cargo run -- -c config.toml shutdown
 
-mod cli;
-mod config;
-mod ipc;
-mod ipc_client;
-mod ivr;
-mod plugins;
-mod rtp;
-mod service;
-mod sip;
-mod win32_gui;
-
 use anyhow::{Context, Result};
 use clap::Parser;
-use cli::{Cli, Command};
-use config::Config;
-use ipc::Request;
+use rsipclient::cli::{Cli, Command};
+use rsipclient::config::{self, Config};
+use rsipclient::ipc::Request;
+use rsipclient::{ipc_client, service, win32_gui};
 
 #[tokio::main]
 async fn main() -> Result<()> {
