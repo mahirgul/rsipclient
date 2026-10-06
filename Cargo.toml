@@ -10,6 +10,7 @@ documentation = "https://github.com/mahirgul/rsipclient#readme"
 readme = "README.md"
 keywords = ["sip", "voip", "telephony", "cli", "ivr"]
 categories = ["network-programming", "command-line-utilities"]
+exclude = ["fuzz"]
 authors = ["Mahir Gül <mahirgul@gmail.com>"]
 
 [lib]

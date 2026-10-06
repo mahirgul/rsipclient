@@ -26,7 +26,7 @@ const MAX_RECORDING_SAMPLES: usize = 8_000 * 60 * 30;
 const MAX_DTMF_BUFFERED: usize = 512;
 
 /// The RTP header fields the receive loop acts on.
-pub(crate) struct RtpPacket<'a> {
+pub struct RtpPacket<'a> {
     pub payload_type: u8,
     pub sequence: u16,
     pub timestamp: u32,
@@ -39,7 +39,7 @@ pub(crate) struct RtpPacket<'a> {
 /// extension push it back, and padding trims the end. Assuming a bare 12-byte
 /// header hands the codec parts of the header as audio whenever a peer uses
 /// either feature.
-pub(crate) fn parse_rtp(packet: &[u8]) -> Option<RtpPacket<'_>> {
+pub fn parse_rtp(packet: &[u8]) -> Option<RtpPacket<'_>> {
     if packet.len() < 12 || packet[0] >> 6 != 2 {
         return None;
     }
@@ -395,6 +395,11 @@ impl RtpReceiver {
     pub async fn start_recording(&self) {
         *self.recording_active.lock().await = true;
         self.recording.lock().await.clear();
+    }
+
+    /// Number of samples recorded so far.
+    pub async fn recording_len(&self) -> usize {
+        self.recording.lock().await.len()
     }
 
     /// Stop recording and return captured samples

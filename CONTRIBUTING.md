@@ -12,12 +12,11 @@ Thanks for your interest in contributing!
 ## Development
 
 ```bash
-# Build with all features
-cargo build --features opus
+# Build (Opus support is always compiled in)
+cargo build
 
-# Run tests
-cargo test
-cargo test --features opus
+# Run unit + integration tests
+cargo test --all-targets
 
 # Check + lint
 cargo clippy --all-targets -- -D warnings
@@ -27,13 +26,36 @@ cargo fmt --check
 cargo fmt
 ```
 
+## Testing
+
+- **Unit tests** live next to the code in `#[cfg(test)]` modules.
+- **Integration tests** in `tests/` use the library crate (`src/lib.rs`):
+  - `tests/sip_flows.rs` — REGISTER/INVITE/ACK/BYE against a scripted UDP SIP
+    peer that verifies digest responses like a real registrar
+  - `tests/media.rs` — WAV → RTP → receiver → WAV round trips per codec
+  - `tests/robustness.rs` — seeded random mutations of SIP, SDP, RTP and WAV
+    input; every parser must reject garbage without panicking
+- **Fuzzing** with [cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz)
+  (nightly toolchain) for longer runs:
+
+```bash
+cargo install cargo-fuzz
+cd fuzz
+cargo +nightly fuzz list
+cargo +nightly fuzz run sip_message -- -max_total_time=300
+```
+
+CI runs every fuzz target for 30 seconds as a smoke test.
+
 ## Code structure
 
+- `src/lib.rs` — library root; `src/main.rs` is the thin CLI binary
 - `src/sip/` — SIP protocol (signalling, messages, transport)
 - `src/rtp/` — RTP media (codecs, WAV, DTMF detection)
-- `src/service.rs` — Multi-account service + TCP IPC
-- `src/ivr.rs` — Auto-attendant / IVR engine
+- `src/service.rs` — Multi-account service, web dashboard + TCP IPC
+- `src/ivr/` — Auto-attendant / IVR engine
 - `src/config.rs` — TOML config parsing
+- `fuzz/` — cargo-fuzz targets
 
 ## Conventions
 

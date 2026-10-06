@@ -54,6 +54,32 @@ jobs:
       - name: Test
         run: cargo test --all-targets
 
+  fuzz:
+    name: Fuzz (smoke)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@nightly
+
+      - uses: Swatinem/rust-cache@v2
+        continue-on-error: true
+        with:
+          workspaces: fuzz
+
+      - name: Install Opus (Linux)
+        run: sudo apt-get update && sudo apt-get install -y libopus-dev
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      - name: Run each fuzz target for 30 seconds
+        working-directory: fuzz
+        run: |
+          for target in $(cargo +nightly fuzz list); do
+            cargo +nightly fuzz run "$target" -- -max_total_time=30 -max_len=4096
+          done
+
   doc:
     name: Doc
     runs-on: ubuntu-latest

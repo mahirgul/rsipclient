@@ -17,7 +17,7 @@ pub(crate) fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> 
     haystack.windows(needle.len()).position(|w| w == needle)
 }
 
-pub(crate) fn parse_content_length(headers: &str) -> Option<usize> {
+pub fn parse_content_length(headers: &str) -> Option<usize> {
     for line in headers.lines() {
         let lower = line.to_lowercase();
         let trimmed = lower.trim();
@@ -32,7 +32,7 @@ pub(crate) fn parse_content_length(headers: &str) -> Option<usize> {
 }
 
 /// Try to extract a complete SIP message from the buffer.
-pub(crate) fn extract_sip_message(buf: &mut Vec<u8>) -> Option<Vec<u8>> {
+pub fn extract_sip_message(buf: &mut Vec<u8>) -> Option<Vec<u8>> {
     // Discard any leading CRLF/LF/CR keep-alive bytes
     let non_crlf_pos = buf.iter().position(|&b| b != b'\r' && b != b'\n');
     match non_crlf_pos {
